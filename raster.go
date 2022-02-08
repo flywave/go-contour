@@ -12,4 +12,5 @@ type Raster interface {
 	Srs() geo.Proj
 	Bounds() vec2d.Rect
 	NoData() float64
+	GeoTransform() [6]float64
 }

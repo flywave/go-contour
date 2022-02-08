@@ -6,7 +6,7 @@ import (
 	"sort"
 )
 
-type Point interface {
+type KDPoint interface {
 	Dimensions() int
 	Dimension(i int) float64
 }
@@ -15,18 +15,18 @@ type KDTree struct {
 	root *node
 }
 
-func New(points []Point) *KDTree {
+func New(points []KDPoint) *KDTree {
 	return &KDTree{
 		root: newKDTree(points, 0),
 	}
 }
 
-func newKDTree(points []Point, axis int) *node {
+func newKDTree(points []KDPoint, axis int) *node {
 	if len(points) == 0 {
 		return nil
 	}
 	if len(points) == 1 {
-		return &node{Point: points[0]}
+		return &node{KDPoint: points[0]}
 	}
 
 	sort.Sort(&byDimension{dimension: axis, points: points})
@@ -34,9 +34,9 @@ func newKDTree(points []Point, axis int) *node {
 	root := points[mid]
 	nextDim := (axis + 1) % root.Dimensions()
 	return &node{
-		Point: root,
-		Left:  newKDTree(points[:mid], nextDim),
-		Right: newKDTree(points[mid+1:], nextDim),
+		KDPoint: root,
+		Left:    newKDTree(points[:mid], nextDim),
+		Right:   newKDTree(points[mid+1:], nextDim),
 	}
 }
 
@@ -51,15 +51,15 @@ func printTreeNode(n *node) string {
 	return n.String()
 }
 
-func (t *KDTree) Insert(p Point) {
+func (t *KDTree) Insert(p KDPoint) {
 	if t.root == nil {
-		t.root = &node{Point: p}
+		t.root = &node{KDPoint: p}
 	} else {
 		t.root.Insert(p, 0)
 	}
 }
 
-func (t *KDTree) Remove(p Point) Point {
+func (t *KDTree) Remove(p KDPoint) KDPoint {
 	if t.root == nil || p == nil {
 		return nil
 	}
@@ -70,46 +70,46 @@ func (t *KDTree) Remove(p Point) Point {
 	if n == nil {
 		return nil
 	}
-	return n.Point
+	return n.KDPoint
 }
 
 func (t *KDTree) Balance() {
 	t.root = newKDTree(t.Points(), 0)
 }
 
-func (t *KDTree) Points() []Point {
+func (t *KDTree) Points() []KDPoint {
 	if t.root == nil {
-		return []Point{}
+		return []KDPoint{}
 	}
 	return t.root.Points()
 }
 
-func (t *KDTree) KNN(p Point, k int) []Point {
+func (t *KDTree) KNN(p KDPoint, k int) []KDPoint {
 	if t.root == nil || p == nil || k == 0 {
-		return []Point{}
+		return []KDPoint{}
 	}
 
 	nearestPQ := NewPriorityQueue(WithMinPrioSize(k))
 	knn(p, k, t.root, 0, nearestPQ)
 
-	points := make([]Point, 0, k)
+	points := make([]KDPoint, 0, k)
 	for i := 0; i < k && 0 < nearestPQ.Len(); i++ {
-		o := nearestPQ.PopLowest().(*node).Point
+		o := nearestPQ.PopLowest().(*node).KDPoint
 		points = append(points, o)
 	}
 
 	return points
 }
 
-func (t *KDTree) RangeSearch(r Range) []Point {
+func (t *KDTree) RangeSearch(r Range) []KDPoint {
 	if t.root == nil || r == nil || len(r) != t.root.Dimensions() {
-		return []Point{}
+		return []KDPoint{}
 	}
 
 	return t.root.RangeSearch(r, 0)
 }
 
-func knn(p Point, k int, start *node, currentAxis int, nearestPQ *PriorityQueue) {
+func knn(p KDPoint, k int, start *node, currentAxis int, nearestPQ *PriorityQueue) {
 	if p == nil || k == 0 || start == nil {
 		return
 	}
@@ -149,7 +149,7 @@ func knn(p Point, k int, start *node, currentAxis int, nearestPQ *PriorityQueue)
 	}
 }
 
-func distance(p1, p2 Point) float64 {
+func distance(p1, p2 KDPoint) float64 {
 	sum := 0.
 	for i := 0; i < p1.Dimensions(); i++ {
 		sum += math.Pow(p1.Dimension(i)-p2.Dimension(i), 2.0)
@@ -157,7 +157,7 @@ func distance(p1, p2 Point) float64 {
 	return math.Sqrt(sum)
 }
 
-func planeDistance(p Point, planePosition float64, dim int) float64 {
+func planeDistance(p KDPoint, planePosition float64, dim int) float64 {
 	return math.Abs(planePosition - p.Dimension(dim))
 }
 
@@ -179,7 +179,7 @@ func getKthOrLastDistance(nearestPQ *PriorityQueue, i int) float64 {
 
 type byDimension struct {
 	dimension int
-	points    []Point
+	points    []KDPoint
 }
 
 func (b *byDimension) Len() int {
@@ -195,44 +195,44 @@ func (b *byDimension) Swap(i, j int) {
 }
 
 type node struct {
-	Point
+	KDPoint
 	Left  *node
 	Right *node
 }
 
 func (n *node) String() string {
-	return fmt.Sprintf("%v", n.Point)
+	return fmt.Sprintf("%v", n.KDPoint)
 }
 
-func (n *node) Points() []Point {
-	var points []Point
+func (n *node) Points() []KDPoint {
+	var points []KDPoint
 	if n.Left != nil {
 		points = n.Left.Points()
 	}
-	points = append(points, n.Point)
+	points = append(points, n.KDPoint)
 	if n.Right != nil {
 		points = append(points, n.Right.Points()...)
 	}
 	return points
 }
 
-func (n *node) Insert(p Point, axis int) {
-	if p.Dimension(axis) < n.Point.Dimension(axis) {
+func (n *node) Insert(p KDPoint, axis int) {
+	if p.Dimension(axis) < n.KDPoint.Dimension(axis) {
 		if n.Left == nil {
-			n.Left = &node{Point: p}
+			n.Left = &node{KDPoint: p}
 		} else {
-			n.Left.Insert(p, (axis+1)%n.Point.Dimensions())
+			n.Left.Insert(p, (axis+1)%n.KDPoint.Dimensions())
 		}
 	} else {
 		if n.Right == nil {
-			n.Right = &node{Point: p}
+			n.Right = &node{KDPoint: p}
 		} else {
-			n.Right.Insert(p, (axis+1)%n.Point.Dimensions())
+			n.Right.Insert(p, (axis+1)%n.KDPoint.Dimensions())
 		}
 	}
 }
 
-func (n *node) Remove(p Point, axis int) (*node, *node) {
+func (n *node) Remove(p KDPoint, axis int) (*node, *node) {
 	for i := 0; i < n.Dimensions(); i++ {
 		if n.Dimension(i) != p.Dimension(i) {
 			if n.Left != nil {
@@ -310,15 +310,15 @@ func (n *node) FindLargest(axis int, largest *node) *node {
 	return largest
 }
 
-func (n *node) RangeSearch(r Range, axis int) []Point {
-	points := []Point{}
+func (n *node) RangeSearch(r Range, axis int) []KDPoint {
+	points := []KDPoint{}
 
 	for dim, limit := range r {
 		if limit[0] > n.Dimension(dim) || limit[1] < n.Dimension(dim) {
 			goto checkChildren
 		}
 	}
-	points = append(points, n.Point)
+	points = append(points, n.KDPoint)
 
 checkChildren:
 	if n.Left != nil && n.Dimension(axis) >= r[axis][0] {

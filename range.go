@@ -2,7 +2,7 @@ package contour
 
 type Range [][2]float64
 
-func NewRange(limits ...float64) Range {
+func newRange(limits ...float64) Range {
 	if limits == nil || len(limits)%2 != 0 {
 		return nil
 	}
