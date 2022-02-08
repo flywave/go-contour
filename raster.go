@@ -14,3 +14,8 @@ type Raster interface {
 	NoData() float64
 	GeoTransform() [6]float64
 }
+
+type RasterProvider interface {
+	Next() Raster
+	HasNext() bool
+}
