@@ -15,7 +15,7 @@ type KDTree struct {
 	root *node
 }
 
-func New(points []KDPoint) *KDTree {
+func NewKDTree(points []KDPoint) *KDTree {
 	return &KDTree{
 		root: newKDTree(points, 0),
 	}
@@ -101,14 +101,6 @@ func (t *KDTree) KNN(p KDPoint, k int) []KDPoint {
 	return points
 }
 
-func (t *KDTree) RangeSearch(r Range) []KDPoint {
-	if t.root == nil || r == nil || len(r) != t.root.Dimensions() {
-		return []KDPoint{}
-	}
-
-	return t.root.RangeSearch(r, 0)
-}
-
 func knn(p KDPoint, k int, start *node, currentAxis int, nearestPQ *PriorityQueue) {
 	if p == nil || k == 0 || start == nil {
 		return
@@ -131,6 +123,7 @@ func knn(p KDPoint, k int, start *node, currentAxis int, nearestPQ *PriorityQueu
 	for path, currentNode = popLast(path); currentNode != nil; path, currentNode = popLast(path) {
 		currentDistance := distance(p, currentNode)
 		checkedDistance := getKthOrLastDistance(nearestPQ, k-1)
+
 		if currentDistance < checkedDistance {
 			nearestPQ.Insert(currentNode, currentDistance)
 			checkedDistance = getKthOrLastDistance(nearestPQ, k-1)
@@ -308,25 +301,4 @@ func (n *node) FindLargest(axis int, largest *node) *node {
 		largest = n.Right.FindLargest(axis, largest)
 	}
 	return largest
-}
-
-func (n *node) RangeSearch(r Range, axis int) []KDPoint {
-	points := []KDPoint{}
-
-	for dim, limit := range r {
-		if limit[0] > n.Dimension(dim) || limit[1] < n.Dimension(dim) {
-			goto checkChildren
-		}
-	}
-	points = append(points, n.KDPoint)
-
-checkChildren:
-	if n.Left != nil && n.Dimension(axis) >= r[axis][0] {
-		points = append(points, n.Left.RangeSearch(r, (axis+1)%n.Dimensions())...)
-	}
-	if n.Right != nil && n.Dimension(axis) <= r[axis][1] {
-		points = append(points, n.Right.RangeSearch(r, (axis+1)%n.Dimensions())...)
-	}
-
-	return points
 }

@@ -1,10 +1,5 @@
 package contour
 
-import (
-	"github.com/flywave/go-geo"
-	"github.com/flywave/go-geom"
-)
-
 type ContourGenerateOptions struct {
 	Interval    float64
 	Base        float64
@@ -15,7 +10,7 @@ type ContourGenerateOptions struct {
 	Polygonize  bool
 }
 
-func ContourGenerate(r Raster, wf func(level float64, ls geom.Geometry, srs geo.Proj), options ContourGenerateOptions) error {
+func ContourGenerate(r Raster, wf GeometryWriter, options ContourGenerateOptions) error {
 	w, h := r.Size()
 	if options.Polygonize {
 		wr := &GeomPolygonContourWriter{polyWriter: wf, geoTransform: r.GeoTransform(), srs: r.Srs(), previousLevel: r.Range()[0]}

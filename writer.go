@@ -1,5 +1,10 @@
 package contour
 
+import (
+	"github.com/flywave/go-geo"
+	"github.com/flywave/go-geom"
+)
+
 type PolygonWriter interface {
 	StartPolygon(level float64)
 	AddInteriorRing(ring LineString)
@@ -17,4 +22,8 @@ type ContourWriter interface {
 
 type LineStringWriter interface {
 	AddLine(level float64, ls LineString, f bool)
+}
+
+type GeometryWriter interface {
+	Write(clevel float64, poly geom.Geometry, srs geo.Proj)
 }

@@ -2,21 +2,21 @@ package contour
 
 import "github.com/flywave/go-geom"
 
-type LSPoint struct {
+type lsPoint struct {
 	KDPoint
 	id int64
 	pt [2]float64
 }
 
-func (p *LSPoint) Id() int64 {
+func (p *lsPoint) Id() int64 {
 	return p.id
 }
 
-func (p *LSPoint) Dimensions() int {
+func (p *lsPoint) Dimensions() int {
 	return 2
 }
 
-func (p *LSPoint) Dimension(i int) float64 {
+func (p *lsPoint) Dimension(i int) float64 {
 	return p.pt[i]
 }
 

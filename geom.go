@@ -2,7 +2,6 @@ package contour
 
 import (
 	"github.com/flywave/go-geo"
-	"github.com/flywave/go-geom"
 	"github.com/flywave/go-geom/general"
 )
 
@@ -15,7 +14,7 @@ type GeomPolygonContourWriter struct {
 	currentPart     [][][]float64
 	currentLevel    float64
 	previousLevel   float64
-	polyWriter      func(clevel float64, poly geom.Geometry, srs geo.Proj)
+	polyWriter      GeometryWriter
 }
 
 func (w *GeomPolygonContourWriter) StartPolygon(level float64) {
@@ -61,9 +60,9 @@ func (w *GeomPolygonContourWriter) EndPolygon() {
 	}
 
 	if w.poly3d {
-		w.polyWriter(w.currentLevel, general.NewMultiPolygon3(w.currentGeometry), w.srs)
+		w.polyWriter.Write(w.currentLevel, general.NewMultiPolygon3(w.currentGeometry), w.srs)
 	} else {
-		w.polyWriter(w.currentLevel, general.NewMultiPolygon(w.currentGeometry), w.srs)
+		w.polyWriter.Write(w.currentLevel, general.NewMultiPolygon(w.currentGeometry), w.srs)
 	}
 
 	w.currentGeometry = nil
@@ -74,7 +73,7 @@ type GeomLineStringContourWriter struct {
 	ls3d         bool
 	srs          geo.Proj
 	geoTransform [6]float64
-	lsWriter     func(level float64, ls geom.Geometry, srs geo.Proj)
+	lsWriter     GeometryWriter
 }
 
 func (w *GeomLineStringContourWriter) AddLine(level float64, ls LineString, f bool) {
@@ -88,8 +87,8 @@ func (w *GeomLineStringContourWriter) AddLine(level float64, ls LineString, f bo
 	}
 
 	if w.ls3d {
-		w.lsWriter(level, general.NewLineString3(newRing), w.srs)
+		w.lsWriter.Write(level, general.NewLineString3(newRing), w.srs)
 	} else {
-		w.lsWriter(level, general.NewLineString(newRing), w.srs)
+		w.lsWriter.Write(level, general.NewLineString(newRing), w.srs)
 	}
 }

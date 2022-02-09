@@ -5,13 +5,13 @@ import (
 	"sort"
 )
 
-type IRange [2]RangeIterator
+type Range [2]RangeIterator
 
-func (r *IRange) Begin() *RangeIterator { return &r[0] }
-func (r *IRange) End() *RangeIterator   { return &r[1] }
+func (r *Range) Begin() *RangeIterator { return &r[0] }
+func (r *Range) End() *RangeIterator   { return &r[1] }
 
 type LevelGenerator interface {
-	Range(min, max float64) IRange
+	Range(min, max float64) Range
 	Level(idx int) float64
 }
 
@@ -47,7 +47,7 @@ func newFixedLevelRangeIterator(levels []float64, maxLevel float64) *FixedLevelR
 	return &FixedLevelRangeIterator{levels: levels, maxLevel: maxLevel}
 }
 
-func (it *FixedLevelRangeIterator) Range(min, max float64) IRange {
+func (it *FixedLevelRangeIterator) Range(min, max float64) Range {
 	if min > max {
 		min, max = max, min
 	}
@@ -55,12 +55,12 @@ func (it *FixedLevelRangeIterator) Range(min, max float64) IRange {
 	for ; b != len(it.levels) && it.levels[b] < fudge(it.levels[b], min); b++ {
 	}
 	if min == max {
-		return IRange{*newRangeIterator(it, int(b)), *newRangeIterator(it, int(b))}
+		return Range{*newRangeIterator(it, int(b)), *newRangeIterator(it, int(b))}
 	}
 	e := b
 	for ; e != len(it.levels) && it.levels[e] <= fudge(it.levels[e], max); e++ {
 	}
-	return IRange{*newRangeIterator(it, int(b)), *newRangeIterator(it, int(e))}
+	return Range{*newRangeIterator(it, int(b)), *newRangeIterator(it, int(e))}
 }
 
 func (it *FixedLevelRangeIterator) Level(idx int) float64 {
@@ -79,7 +79,7 @@ func newIntervalLevelRangeIterator(offset, interval float64) *IntervalLevelRange
 	return &IntervalLevelRangeIterator{offset: offset, interval: interval}
 }
 
-func (it *IntervalLevelRangeIterator) Range(min, max float64) IRange {
+func (it *IntervalLevelRangeIterator) Range(min, max float64) Range {
 	if min > max {
 		min, max = max, min
 	}
@@ -92,7 +92,7 @@ func (it *IntervalLevelRangeIterator) Range(min, max float64) IRange {
 	b := newRangeIterator(it, i1)
 
 	if min == max {
-		return IRange{*b, *b}
+		return Range{*b, *b}
 	}
 
 	i2 := int(math.Floor((max-it.offset)/it.interval) + 1)
@@ -102,7 +102,7 @@ func (it *IntervalLevelRangeIterator) Range(min, max float64) IRange {
 	}
 	e := newRangeIterator(it, i2)
 
-	return IRange{*b, *e}
+	return Range{*b, *e}
 }
 
 func (it *IntervalLevelRangeIterator) Level(idx int) float64 {
@@ -140,7 +140,7 @@ func (it *ExponentialLevelRangeIterator) Level(idx int) float64 {
 	return math.Pow(it.base, float64(idx-1))
 }
 
-func (it *ExponentialLevelRangeIterator) Range(min, max float64) IRange {
+func (it *ExponentialLevelRangeIterator) Range(min, max float64) Range {
 	if min > max {
 		min, max = max, min
 	}
@@ -153,7 +153,7 @@ func (it *ExponentialLevelRangeIterator) Range(min, max float64) IRange {
 	b := newRangeIterator(it, i1)
 
 	if min == max {
-		return IRange{*b, *b}
+		return Range{*b, *b}
 	}
 
 	i2 := it.index2(max)
@@ -163,5 +163,5 @@ func (it *ExponentialLevelRangeIterator) Range(min, max float64) IRange {
 	}
 	e := newRangeIterator(it, i2)
 
-	return IRange{*b, *e}
+	return Range{*b, *e}
 }
