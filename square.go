@@ -2,8 +2,6 @@ package contour
 
 import (
 	"math"
-
-	vec2d "github.com/flywave/go3d/float64/vec2"
 )
 
 const (
@@ -50,35 +48,35 @@ func getValidValue(v, l, def float64) float64 {
 
 func (s *Square) center() ValuedPoint {
 	return ValuedPoint{
-		Point: vec2d.T{.5 * (s.upperLeft.Point[0] + s.lowerRight.Point[0]), .5 * (s.upperLeft.Point[1] + s.lowerRight.Point[1])},
+		Point: Point{.5 * (s.upperLeft.Point[0] + s.lowerRight.Point[0]), .5 * (s.upperLeft.Point[1] + s.lowerRight.Point[1])},
 		Value: (getValidValue(s.lowerLeft.Value, s.lowerLeft.Value, 0) + getValidValue(s.upperLeft.Value, s.upperLeft.Value, 0) + getValidValue(s.lowerRight.Value, s.lowerRight.Value, 0) + getValidValue(s.upperRight.Value, s.upperRight.Value, 0)) / float64(4-s.nanCount),
 	}
 }
 
 func (s *Square) leftCenter() ValuedPoint {
 	return ValuedPoint{
-		Point: vec2d.T{s.upperLeft.Point[0], .5 * (s.upperLeft.Point[1] + s.lowerLeft.Point[1])},
+		Point: Point{s.upperLeft.Point[0], .5 * (s.upperLeft.Point[1] + s.lowerLeft.Point[1])},
 		Value: getValidValue(s.upperLeft.Value, s.lowerLeft.Value, getValidValue(s.lowerLeft.Value, s.upperLeft.Value, .5*(s.upperLeft.Value+s.lowerLeft.Value))),
 	}
 }
 
 func (s *Square) lowerCenter() ValuedPoint {
 	return ValuedPoint{
-		Point: vec2d.T{.5 * (s.lowerLeft.Point[0] + s.lowerRight.Point[0]), s.lowerLeft.Point[1]},
+		Point: Point{.5 * (s.lowerLeft.Point[0] + s.lowerRight.Point[0]), s.lowerLeft.Point[1]},
 		Value: getValidValue(s.lowerRight.Value, s.lowerLeft.Value, getValidValue(s.lowerLeft.Value, s.lowerRight.Value, .5*(s.lowerRight.Value+s.lowerLeft.Value))),
 	}
 }
 
 func (s *Square) rightCenter() ValuedPoint {
 	return ValuedPoint{
-		Point: vec2d.T{s.upperRight.Point[0], .5 * (s.upperRight.Point[1] + s.lowerRight.Point[1])},
+		Point: Point{s.upperRight.Point[0], .5 * (s.upperRight.Point[1] + s.lowerRight.Point[1])},
 		Value: getValidValue(s.lowerRight.Value, s.upperRight.Value, getValidValue(s.upperRight.Value, s.lowerRight.Value, .5*(s.lowerRight.Value+s.upperRight.Value))),
 	}
 }
 
 func (s *Square) upperCenter() ValuedPoint {
 	return ValuedPoint{
-		Point: vec2d.T{.5 * (s.upperLeft.Point[0] + s.upperRight.Point[0]), s.upperLeft.Point[1]},
+		Point: Point{.5 * (s.upperLeft.Point[0] + s.upperRight.Point[0]), s.upperLeft.Point[1]},
 		Value: getValidValue(s.upperLeft.Value, s.upperRight.Value, getValidValue(s.upperRight.Value, s.upperLeft.Value, .5*(s.upperLeft.Value+s.upperRight.Value))),
 	}
 }

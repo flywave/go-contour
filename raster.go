@@ -7,12 +7,14 @@ import (
 )
 
 type Raster interface {
-	GetSize() (w, h int)
+	Size() (w, h int)
 	Elevation(x, y int) float64
+	FetchLine(y int, line []float64) error
 	Srs() geo.Proj
 	Bounds() vec2d.Rect
-	NoData() float64
+	NoData() *float64
 	GeoTransform() [6]float64
+	Range() [2]float64
 }
 
 type RasterProvider interface {

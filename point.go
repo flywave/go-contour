@@ -63,6 +63,6 @@ func (l LineString) isClosed() bool {
 }
 
 type ValuedPoint struct {
-	Point vec2d.T
+	Point Point
 	Value float64
 }

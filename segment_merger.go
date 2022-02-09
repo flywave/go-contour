@@ -2,6 +2,7 @@ package contour
 
 import (
 	"container/list"
+	"fmt"
 )
 
 type LineStringEx struct {
@@ -21,6 +22,14 @@ func newSegmentMerger(lineWriter LineStringWriter, levelGenerator LevelGenerator
 }
 
 func (s *SegmentMerger) Close() {
+	if s.polygonize {
+		for _, val := range s.lines {
+			if val.Len() > 0 {
+				fmt.Print("remaining unclosed contour")
+			}
+		}
+	}
+
 	for levelIdx, val := range s.lines {
 		for val.Len() > 0 {
 			elm := val.Front()
@@ -42,7 +51,7 @@ func (s *SegmentMerger) AddSegment(levelIdx int, start, end Point) {
 	s.addSegment_(levelIdx, start, end)
 }
 
-func (s *SegmentMerger) beginningOfLine() {
+func (s *SegmentMerger) BeginningOfLine() {
 	if s.polygonize {
 		return
 	}
@@ -54,7 +63,7 @@ func (s *SegmentMerger) beginningOfLine() {
 	}
 }
 
-func (s *SegmentMerger) endOfLine() {
+func (s *SegmentMerger) EndOfLine() {
 	if s.polygonize {
 		return
 	}
@@ -72,7 +81,7 @@ func (s *SegmentMerger) endOfLine() {
 
 func (s *SegmentMerger) emitLine_(levelIdx int, it *list.Element, closed bool) *list.Element {
 	lines := s.lines[levelIdx]
-	if lines.Len() > 0 {
+	if lines.Len() == 0 {
 		delete(s.lines, levelIdx)
 	}
 
@@ -90,6 +99,7 @@ func (s *SegmentMerger) addSegment_(levelIdx int, start, end Point) {
 	}
 
 	it := lines.Front()
+
 	for ; it != nil; it = it.Next() {
 		lsex := it.Value.(*LineStringEx)
 

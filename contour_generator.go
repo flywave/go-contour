@@ -2,8 +2,6 @@ package contour
 
 import (
 	"math"
-
-	vec2d "github.com/flywave/go3d/float64/vec2"
 )
 
 type extendedLine struct {
@@ -27,8 +25,9 @@ func (e *extendedLine) value(idx int) float64 {
 }
 
 type ContourGenerator struct {
-	width       int
-	height      int
+	width  int
+	height int
+
 	hasNoData   bool
 	noDataValue float64
 
@@ -56,10 +55,10 @@ func (g *ContourGenerator) feedLine_(line []float64) {
 	current := &extendedLine{line: line, hasNoData: g.hasNoData, noDataValue: g.noDataValue}
 
 	for colIdx := -1; colIdx < int(g.width); colIdx++ {
-		upperLeft := ValuedPoint{Point: vec2d.T{float64(colIdx+1) - .5, float64(g.lineIdx) - .5}, Value: previous.value(colIdx)}
-		upperRight := ValuedPoint{Point: vec2d.T{float64(colIdx+1) + .5, float64(g.lineIdx) - .5}, Value: previous.value(colIdx + 1)}
-		lowerLeft := ValuedPoint{Point: vec2d.T{float64(colIdx+1) - .5, float64(g.lineIdx) + .5}, Value: current.value(colIdx)}
-		lowerRight := ValuedPoint{Point: vec2d.T{float64(colIdx+1) + .5, float64(g.lineIdx) + .5}, Value: current.value(colIdx + 1)}
+		upperLeft := ValuedPoint{Point: Point{float64(colIdx+1) - .5, float64(g.lineIdx) - .5}, Value: previous.value(colIdx)}
+		upperRight := ValuedPoint{Point: Point{float64(colIdx+1) + .5, float64(g.lineIdx) - .5}, Value: previous.value(colIdx + 1)}
+		lowerLeft := ValuedPoint{Point: Point{float64(colIdx+1) - .5, float64(g.lineIdx) + .5}, Value: current.value(colIdx)}
+		lowerRight := ValuedPoint{Point: Point{float64(colIdx+1) + .5, float64(g.lineIdx) + .5}, Value: current.value(colIdx + 1)}
 
 		newSquare(upperLeft, upperRight, lowerLeft, lowerRight, NO_BORDER, false).Process(g.levelGenerator, g.writer)
 	}
@@ -79,4 +78,19 @@ func (g *ContourGenerator) feedLine(line []float64) {
 			g.feedLine_(nil)
 		}
 	}
+}
+
+func (g *ContourGenerator) Process(r Raster) error {
+	width, height := r.Size()
+	line := make([]float64, width)
+
+	for lineIdx := 0; lineIdx < height; lineIdx++ {
+		err := r.FetchLine(lineIdx, line)
+
+		if err != nil {
+			return err
+		}
+		g.feedLine(line)
+	}
+	return nil
 }
