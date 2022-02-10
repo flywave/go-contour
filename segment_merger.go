@@ -13,12 +13,12 @@ type LineStringEx struct {
 type SegmentMerger struct {
 	polygonize     bool
 	lineWriter     LineStringWriter
-	lines          map[int]list.List
+	lines          map[int]*list.List
 	levelGenerator LevelGenerator
 }
 
 func newSegmentMerger(lineWriter LineStringWriter, levelGenerator LevelGenerator, polygonize_ bool) *SegmentMerger {
-	return &SegmentMerger{polygonize: polygonize_, lineWriter: lineWriter, lines: make(map[int]list.List), levelGenerator: levelGenerator}
+	return &SegmentMerger{polygonize: polygonize_, lineWriter: lineWriter, lines: make(map[int]*list.List), levelGenerator: levelGenerator}
 }
 
 func (s *SegmentMerger) Close() {
@@ -44,11 +44,11 @@ func (s *SegmentMerger) Polygonize() bool {
 }
 
 func (s *SegmentMerger) AddBorderSegment(levelIdx int, start, end Point) {
-	s.addSegment_(levelIdx, start, end)
+	s.addSegment_(levelIdx, start, end, true)
 }
 
 func (s *SegmentMerger) AddSegment(levelIdx int, start, end Point) {
-	s.addSegment_(levelIdx, start, end)
+	s.addSegment_(levelIdx, start, end, false)
 }
 
 func (s *SegmentMerger) BeginningOfLine() {
@@ -69,7 +69,7 @@ func (s *SegmentMerger) EndOfLine() {
 	}
 
 	for levelIdx, l := range s.lines {
-		for e := l.Front(); l.Len() > 0; {
+		for e := l.Front(); e != nil; {
 			if !e.Value.(*LineStringEx).isMerged {
 				e = s.emitLine_(levelIdx, e, false)
 			} else {
@@ -91,8 +91,13 @@ func (s *SegmentMerger) emitLine_(levelIdx int, it *list.Element, closed bool) *
 	return next
 }
 
-func (s *SegmentMerger) addSegment_(levelIdx int, start, end Point) {
+func (s *SegmentMerger) addSegment_(levelIdx int, start, end Point, border bool) {
 	lines := s.lines[levelIdx]
+
+	if lines == nil {
+		s.lines[levelIdx] = list.New()
+		lines = s.lines[levelIdx]
+	}
 
 	if start == end {
 		return
@@ -114,7 +119,7 @@ func (s *SegmentMerger) addSegment_(levelIdx int, start, end Point) {
 			break
 		}
 		if lsex.ls.isBack(&start) {
-			lsex.ls = append(lsex.ls, start)
+			lsex.ls = append(lsex.ls, end)
 			lsex.isMerged = true
 			break
 		}
@@ -125,21 +130,21 @@ func (s *SegmentMerger) addSegment_(levelIdx int, start, end Point) {
 		}
 	}
 
-	if it == lines.Back() {
+	if it == nil {
 		lse := &LineStringEx{}
 		lines.PushBack(lse)
 
 		lse.ls = append(lse.ls, start)
 		lse.ls = append(lse.ls, end)
 		lse.isMerged = true
-	} else if s.polygonize && (it.Value.(*LineStringEx).ls.isClosed()) {
+	} else if s.polygonize && it != nil && (it.Value.(*LineStringEx).ls.isClosed()) {
 		s.emitLine_(levelIdx, it, true)
 		return
-	} else {
+	} else if it != nil {
 		other := it
 		other = other.Next()
 		for ; other != nil; other = other.Next() {
-			lsex := other.Value.(*LineStringEx)
+			lsex := it.Value.(*LineStringEx)
 			olsex := other.Value.(*LineStringEx)
 
 			if lsex.ls.isBack(olsex.ls.front()) {
@@ -175,11 +180,7 @@ func (s *SegmentMerger) addSegment_(levelIdx int, start, end Point) {
 			} else if lsex.ls.isFront(olsex.ls.front()) {
 				lsex.ls = lsex.ls[1:]
 
-				rlist := LineString{}
-				for i := len(olsex.ls) - 1; i >= 0; i-- {
-					rlist = append(rlist, olsex.ls[i])
-				}
-				lsex.ls = append(rlist, lsex.ls...)
+				lsex.ls = append(olsex.ls, lsex.ls...)
 
 				lsex.isMerged = true
 				lines.Remove(other)

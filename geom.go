@@ -60,9 +60,9 @@ func (w *GeomPolygonContourWriter) EndPolygon() {
 	}
 
 	if w.poly3d {
-		w.polyWriter.Write(w.currentLevel, general.NewMultiPolygon3(w.currentGeometry), w.srs)
+		w.polyWriter.Write(w.previousLevel, w.currentLevel, general.NewMultiPolygon3(w.currentGeometry), w.srs)
 	} else {
-		w.polyWriter.Write(w.currentLevel, general.NewMultiPolygon(w.currentGeometry), w.srs)
+		w.polyWriter.Write(w.previousLevel, w.currentLevel, general.NewMultiPolygon(w.currentGeometry), w.srs)
 	}
 
 	w.currentGeometry = nil
@@ -76,7 +76,7 @@ type GeomLineStringContourWriter struct {
 	lsWriter     GeometryWriter
 }
 
-func (w *GeomLineStringContourWriter) AddLine(level float64, ls LineString, f bool) {
+func (w *GeomLineStringContourWriter) AddLine(level float64, ls LineString, closed bool) error {
 	newRing := make([][]float64, len(ls))
 
 	for ip, p := range ls {
@@ -87,8 +87,8 @@ func (w *GeomLineStringContourWriter) AddLine(level float64, ls LineString, f bo
 	}
 
 	if w.ls3d {
-		w.lsWriter.Write(level, general.NewLineString3(newRing), w.srs)
+		return w.lsWriter.Write(level, level, general.NewLineString3(newRing), w.srs)
 	} else {
-		w.lsWriter.Write(level, general.NewLineString(newRing), w.srs)
+		return w.lsWriter.Write(level, level, general.NewLineString(newRing), w.srs)
 	}
 }

@@ -21,9 +21,11 @@ type ContourWriter interface {
 }
 
 type LineStringWriter interface {
-	AddLine(level float64, ls LineString, f bool)
+	AddLine(level float64, ls LineString, closed bool) error
 }
 
 type GeometryWriter interface {
-	Write(clevel float64, poly geom.Geometry, srs geo.Proj)
+	Close() error
+	Flush() error
+	Write(prelevel, clevel float64, poly geom.Geometry, srs geo.Proj) error
 }

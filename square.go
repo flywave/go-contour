@@ -56,28 +56,28 @@ func (s *Square) center() ValuedPoint {
 func (s *Square) leftCenter() ValuedPoint {
 	return ValuedPoint{
 		Point: Point{s.upperLeft.Point[0], .5 * (s.upperLeft.Point[1] + s.lowerLeft.Point[1])},
-		Value: getValidValue(s.upperLeft.Value, s.lowerLeft.Value, getValidValue(s.lowerLeft.Value, s.upperLeft.Value, .5*(s.upperLeft.Value+s.lowerLeft.Value))),
+		Value: getValidValue(s.upperLeft.Value, getValidValue(s.lowerLeft.Value, .5*(s.upperLeft.Value+s.lowerLeft.Value), s.upperLeft.Value), s.lowerLeft.Value),
 	}
 }
 
 func (s *Square) lowerCenter() ValuedPoint {
 	return ValuedPoint{
 		Point: Point{.5 * (s.lowerLeft.Point[0] + s.lowerRight.Point[0]), s.lowerLeft.Point[1]},
-		Value: getValidValue(s.lowerRight.Value, s.lowerLeft.Value, getValidValue(s.lowerLeft.Value, s.lowerRight.Value, .5*(s.lowerRight.Value+s.lowerLeft.Value))),
+		Value: getValidValue(s.lowerRight.Value, getValidValue(s.lowerLeft.Value, .5*(s.lowerRight.Value+s.lowerLeft.Value), s.lowerRight.Value), s.lowerLeft.Value),
 	}
 }
 
 func (s *Square) rightCenter() ValuedPoint {
 	return ValuedPoint{
 		Point: Point{s.upperRight.Point[0], .5 * (s.upperRight.Point[1] + s.lowerRight.Point[1])},
-		Value: getValidValue(s.lowerRight.Value, s.upperRight.Value, getValidValue(s.upperRight.Value, s.lowerRight.Value, .5*(s.lowerRight.Value+s.upperRight.Value))),
+		Value: getValidValue(s.lowerRight.Value, getValidValue(s.upperRight.Value, .5*(s.lowerRight.Value+s.upperRight.Value), s.lowerRight.Value), s.upperRight.Value),
 	}
 }
 
 func (s *Square) upperCenter() ValuedPoint {
 	return ValuedPoint{
 		Point: Point{.5 * (s.upperLeft.Point[0] + s.upperRight.Point[0]), s.upperLeft.Point[1]},
-		Value: getValidValue(s.upperLeft.Value, s.upperRight.Value, getValidValue(s.upperRight.Value, s.upperLeft.Value, .5*(s.upperLeft.Value+s.upperRight.Value))),
+		Value: getValidValue(s.upperLeft.Value, getValidValue(s.upperRight.Value, .5*(s.upperLeft.Value+s.upperRight.Value), s.upperLeft.Value), s.upperRight.Value),
 	}
 }
 
@@ -163,7 +163,7 @@ func newSquare(upperLeft_, upperRight_, lowerLeft_, lowerRight_ ValuedPoint, bor
 		lowerLeft:  lowerLeft_,
 		lowerRight: lowerRight_,
 		upperRight: upperRight_,
-		nanCount:   int(getValidValue(upperLeft_.Value, 1, 0) + getValidValue(upperRight_.Value, 1, 0) + getValidValue(lowerLeft_.Value, 1, 0) + getValidValue(lowerRight_.Value, 1, 0)),
+		nanCount:   int(getValidValue(upperLeft_.Value, 0, 1) + getValidValue(upperRight_.Value, 0, 1) + getValidValue(lowerLeft_.Value, 0, 1) + getValidValue(lowerRight_.Value, 0, 1)),
 		borders:    borders_,
 		split:      split_,
 	}

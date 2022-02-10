@@ -7,8 +7,8 @@ import (
 
 type Range [2]RangeIterator
 
-func (r *Range) Begin() *RangeIterator { return &r[0] }
-func (r *Range) End() *RangeIterator   { return &r[1] }
+func (r *Range) Begin() RangeIterator { return r[0] }
+func (r *Range) End() RangeIterator   { return r[1] }
 
 type LevelGenerator interface {
 	Range(min, max float64) Range
@@ -28,7 +28,7 @@ func (it *RangeIterator) value() (int, float64) {
 	return it.idx, it.parent.Level(it.idx)
 }
 
-func (it *RangeIterator) neq(other *RangeIterator) bool {
+func (it *RangeIterator) neq(other RangeIterator) bool {
 	return it.idx != other.idx
 }
 

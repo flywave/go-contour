@@ -1,11 +1,16 @@
 package contour
 
-import "github.com/flywave/go-geos"
+import (
+	"sort"
+
+	"github.com/flywave/go-geos"
+)
 
 type Ring struct {
 	points          LineString
 	interiorRings   []*Ring
 	closestExterior *Ring
+	closed          bool
 }
 
 func (r *Ring) isIn(o *Ring) bool {
@@ -53,44 +58,60 @@ func (r *Ring) isInnerRing() bool {
 	return (r.closestExterior != nil) && !r.closestExterior.isInnerRing()
 }
 
-type RingList []Ring
+type ringLevel struct {
+	ls    []*Ring
+	level float64
+}
+
+type RingList []ringLevel
+
+func (p RingList) Len() int           { return len(p) }
+func (p RingList) Less(i, j int) bool { return p[i].level < p[j].level }
+func (p RingList) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 type PolygonRingWriter struct {
-	polygonize bool
-	writer     PolygonWriter
-	rings      map[float64]RingList
+	writer    PolygonWriter
+	rings     RingList
+	ringLeves map[float64]int
 }
 
 func newPolygonRingWriter(writer PolygonWriter) *PolygonRingWriter {
-	return &PolygonRingWriter{writer: writer, rings: make(map[float64]RingList), polygonize: true}
+	return &PolygonRingWriter{writer: writer, rings: []ringLevel{}, ringLeves: make(map[float64]int)}
 }
 
-func (p *PolygonRingWriter) AddLine(level float64, ls LineString, f bool) {
-	p.rings[level] = append(p.rings[level], Ring{points: ls})
+func (p *PolygonRingWriter) AddLine(level float64, ls LineString, closed bool) error {
+	if i, ok := p.ringLeves[level]; !ok {
+		p.ringLeves[level] = len(p.rings)
+		p.rings = append(p.rings, ringLevel{ls: []*Ring{{points: ls, closed: closed}}, level: level})
+	} else {
+		p.rings[i].ls = append(p.rings[i].ls, &Ring{points: ls, closed: closed})
+	}
+	return nil
 }
 
 func (p *PolygonRingWriter) Close() {
 	if len(p.rings) == 0 {
 		return
 	}
+	sort.Sort(p.rings)
 
 	for _, it := range p.rings {
-		for _, currentRing := range it {
-			for _, otherRing := range it {
-				currentRing.checkInclusionWith(&otherRing)
+		for _, currentRing := range it.ls {
+			for _, otherRing := range it.ls {
+				currentRing.checkInclusionWith(otherRing)
 			}
 		}
 
-		for _, currentRing := range it {
+		for _, currentRing := range it.ls {
 			if currentRing.isInnerRing() {
-				currentRing.closestExterior.interiorRings = append(currentRing.closestExterior.interiorRings, &currentRing)
+				currentRing.closestExterior.interiorRings = append(currentRing.closestExterior.interiorRings, currentRing)
 			}
 		}
 	}
 
-	for l, r := range p.rings {
-		p.writer.StartPolygon(l)
-		for _, part := range r {
+	for _, r := range p.rings {
+		p.writer.StartPolygon(r.level)
+		for _, part := range r.ls {
 			if !part.isInnerRing() {
 				p.writer.AddPart(part.points)
 				for _, interiorRing := range part.interiorRings {
@@ -100,4 +121,5 @@ func (p *PolygonRingWriter) Close() {
 		}
 		p.writer.EndPolygon()
 	}
+
 }

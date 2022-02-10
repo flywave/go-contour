@@ -39,9 +39,13 @@ type ContourGenerator struct {
 	levelGenerator LevelGenerator
 }
 
-func newContourGenerator(width, height int, hasNoData bool, noDataValue float64, writer ContourWriter, levelGenerator LevelGenerator) *ContourGenerator {
-	ret := &ContourGenerator{width: width, height: height, hasNoData: hasNoData, noDataValue: noDataValue, writer: writer, levelGenerator: levelGenerator, lineIdx: 0}
+func newContourGenerator(width, height int, noDataValue *float64, writer ContourWriter, levelGenerator LevelGenerator) *ContourGenerator {
+	ret := &ContourGenerator{width: width, height: height, hasNoData: false, noDataValue: math.NaN(), writer: writer, levelGenerator: levelGenerator, lineIdx: 0}
 	ret.previousLine = make([]float64, width)
+	if noDataValue != nil {
+		ret.hasNoData = true
+		ret.noDataValue = *noDataValue
+	}
 	for i := range ret.previousLine {
 		ret.previousLine[i] = math.NaN()
 	}
