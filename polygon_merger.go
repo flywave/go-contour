@@ -24,3 +24,7 @@ type PolygonMerger struct {
 	tree     *KDTree
 	noClosed map[int64]geom.LineString
 }
+
+func (p *PolygonMerger) AddLine(level float64, ls LineString, closed bool) error {
+	return nil
+}

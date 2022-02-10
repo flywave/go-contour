@@ -9,7 +9,7 @@ import (
 	"github.com/flywave/go-geom"
 )
 
-type FiledDef struct {
+type FiledDefined struct {
 	ElevField    string
 	ElevFieldMin string
 	ElevFieldMax string
@@ -21,19 +21,19 @@ type GeoJSONGWriter struct {
 	id     int64
 	lock   sync.Mutex
 	srs    geo.Proj
-	field  *FiledDef
+	field  *FiledDefined
 }
 
-func NewGeoJSONGWriter(jsonfile string, srs geo.Proj, field *FiledDef) *GeoJSONGWriter {
+func NewGeoJSONGWriter(jsonfile string, srs geo.Proj, field *FiledDefined) *GeoJSONGWriter {
 	f, err := os.Create(jsonfile)
 	if err != nil {
 		return nil
 	}
 	if field == nil {
-		field = &FiledDef{
-			ElevField:    "ElevField",
-			ElevFieldMin: "ElevFieldMin",
-			ElevFieldMax: "ElevFieldMax",
+		field = &FiledDefined{
+			ElevField:    "Elevation",
+			ElevFieldMin: "ElevationMin",
+			ElevFieldMax: "ElevationMax",
 		}
 	}
 	return &GeoJSONGWriter{file: f, writer: bufio.NewWriter(f), srs: srs, field: field}

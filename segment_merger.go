@@ -51,7 +51,7 @@ func (s *SegmentMerger) AddSegment(levelIdx int, start, end Point) {
 	s.addSegment_(levelIdx, start, end, false)
 }
 
-func (s *SegmentMerger) BeginningOfLine() {
+func (s *SegmentMerger) StartOfLine() {
 	if s.polygonize {
 		return
 	}

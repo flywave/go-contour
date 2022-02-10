@@ -16,7 +16,7 @@ type ContourWriter interface {
 	Polygonize() bool
 	AddBorderSegment(levelIdx int, start, end Point)
 	AddSegment(levelIdx int, start, end Point)
-	BeginningOfLine()
+	StartOfLine()
 	EndOfLine()
 }
 

@@ -53,7 +53,7 @@ func newContourGenerator(width, height int, noDataValue *float64, writer Contour
 }
 
 func (g *ContourGenerator) feedLine_(line []float64) {
-	g.writer.BeginningOfLine()
+	g.writer.StartOfLine()
 
 	previous := &extendedLine{line: g.previousLine, hasNoData: g.hasNoData, noDataValue: g.noDataValue}
 	current := &extendedLine{line: line, hasNoData: g.hasNoData, noDataValue: g.noDataValue}
