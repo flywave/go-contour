@@ -1,7 +1,5 @@
 package contour
 
-import "github.com/flywave/go-geom"
-
 type lsPoint struct {
 	KDPoint
 	id int64
@@ -20,11 +18,19 @@ func (p *lsPoint) Dimension(i int) float64 {
 	return p.pt[i]
 }
 
-type PolygonMerger struct {
+type PolygonMergerWriter struct {
 	tree     *KDTree
-	noClosed map[int64]geom.LineString
+	noClosed []LineString
 }
 
-func (p *PolygonMerger) AddLine(level float64, ls LineString, closed bool) error {
+func (p *PolygonMergerWriter) AddLine(level float64, ls LineString, closed bool) error {
 	return nil
+}
+
+func (p *PolygonMergerWriter) Flush() {
+
+}
+
+func (p *PolygonMergerWriter) Close() {
+
 }

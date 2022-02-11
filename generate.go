@@ -22,21 +22,21 @@ func ContourGenerate(r Raster, wf GeometryWriter, options ContourGenerateOptions
 			cg := newContourGenerator(w, h, nodata, writer, levels)
 			cg.Process(r)
 			writer.Close()
-			appender.Close()
+			appender.Flush()
 		} else if options.ExpBase > 0.0 {
 			levels := newExponentialLevelRangeIterator(options.ExpBase)
 			writer := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: true, lines: make(map[int]*list.List)}
 			cg := newContourGenerator(w, h, nodata, writer, levels)
 			cg.Process(r)
 			writer.Close()
-			appender.Close()
+			appender.Flush()
 		} else {
 			levels := newIntervalLevelRangeIterator(options.Base, options.Interval)
 			writer := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: true, lines: make(map[int]*list.List)}
 			cg := newContourGenerator(w, h, nodata, writer, levels)
 			cg.Process(r)
 			writer.Close()
-			appender.Close()
+			appender.Flush()
 		}
 	} else {
 		appender := &GeomLineStringContourWriter{lsWriter: wf, geoTransform: r.GeoTransform(), srs: r.Srs()}
