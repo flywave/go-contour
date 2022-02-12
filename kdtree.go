@@ -33,6 +33,7 @@ func newKDTree(points []KDPoint, axis int) *node {
 	mid := len(points) / 2
 	root := points[mid]
 	nextDim := (axis + 1) % root.Dimensions()
+
 	return &node{
 		KDPoint: root,
 		Left:    newKDTree(points[:mid], nextDim),
