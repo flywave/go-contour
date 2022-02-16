@@ -60,9 +60,13 @@ func (w *GeomPolygonContourWriter) EndPolygon() {
 	}
 
 	if w.poly3d {
-		w.polyWriter.Write(w.previousLevel, w.currentLevel, general.NewMultiPolygon3(w.currentGeometry), w.srs)
+		for i := range w.currentGeometry {
+			w.polyWriter.Write(w.previousLevel, w.currentLevel, general.NewPolygon3(w.currentGeometry[i]), w.srs)
+		}
 	} else {
-		w.polyWriter.Write(w.previousLevel, w.currentLevel, general.NewMultiPolygon(w.currentGeometry), w.srs)
+		for i := range w.currentGeometry {
+			w.polyWriter.Write(w.previousLevel, w.currentLevel, general.NewPolygon(w.currentGeometry[i]), w.srs)
+		}
 	}
 
 	w.currentGeometry = nil

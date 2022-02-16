@@ -17,9 +17,9 @@ func newPolygonRingWriter(writer PolygonWriter) *PolygonRingWriter {
 func (p *PolygonRingWriter) AddLine(level float64, ls LineString, closed bool) error {
 	if i, ok := p.ringLeves[level]; !ok {
 		p.ringLeves[level] = len(p.rings)
-		p.rings = append(p.rings, ringLevel{ls: []*Ring{{points: ls, closed: closed}}, level: level})
+		p.rings = append(p.rings, ringLevel{ls: []*Ring{{points: ls}}, level: level})
 	} else {
-		p.rings[i].ls = append(p.rings[i].ls, &Ring{points: ls, closed: closed})
+		p.rings[i].ls = append(p.rings[i].ls, &Ring{points: ls})
 	}
 	return nil
 }

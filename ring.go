@@ -6,7 +6,6 @@ type Ring struct {
 	points          LineString
 	interiorRings   []*Ring
 	closestExterior *Ring
-	closed          bool
 }
 
 func (r *Ring) isIn(o *Ring) bool {

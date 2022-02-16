@@ -17,7 +17,12 @@ type Raster interface {
 	Range() [2]float64
 }
 
+type RasterLoader interface {
+	Load(coord [3]int) Raster
+}
+
 type RasterProvider interface {
 	Next() Raster
 	HasNext() bool
+	Reset()
 }

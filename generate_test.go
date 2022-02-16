@@ -9,7 +9,7 @@ import (
 func TestContourGenerateLineBase(t *testing.T) {
 	tiff := NewGeoTiffRaster("./data/full.tif")
 
-	jsonwriter := NewGeoJSONGWriter("./data/full.json", geo.NewProj(4326), nil)
+	jsonwriter := NewGeoJSONGWriter("./data/full_line_bi.json", geo.NewProj(4326), nil)
 
 	options := ContourGenerateOptions{
 		Polygonize: false,
@@ -30,7 +30,7 @@ func TestContourGenerateLineBase(t *testing.T) {
 func TestContourGenerateLineFix(t *testing.T) {
 	tiff := NewGeoTiffRaster("./data/full.tif")
 
-	jsonwriter := NewGeoJSONGWriter("./data/full.json", geo.NewProj(4326), nil)
+	jsonwriter := NewGeoJSONGWriter("./data/full_line_fix.json", geo.NewProj(4326), nil)
 
 	options := ContourGenerateOptions{
 		Polygonize:  false,
@@ -50,7 +50,7 @@ func TestContourGenerateLineFix(t *testing.T) {
 func TestContourGeneratePolyBase(t *testing.T) {
 	tiff := NewGeoTiffRaster("./data/full.tif")
 
-	jsonwriter := NewGeoJSONGWriter("./data/full.json", geo.NewProj(4326), nil)
+	jsonwriter := NewGeoJSONGWriter("./data/full_polygon_bi.json", geo.NewProj(4326), nil)
 
 	options := ContourGenerateOptions{
 		Polygonize: true,
@@ -71,7 +71,7 @@ func TestContourGeneratePolyBase(t *testing.T) {
 func TestContourGeneratePolyFix(t *testing.T) {
 	tiff := NewGeoTiffRaster("./data/full.tif")
 
-	jsonwriter := NewGeoJSONGWriter("./data/full.json", geo.NewProj(4326), nil)
+	jsonwriter := NewGeoJSONGWriter("./data/full_polygon_fix.json", geo.NewProj(4326), nil)
 
 	options := ContourGenerateOptions{
 		Polygonize:  true,
