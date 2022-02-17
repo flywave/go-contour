@@ -19,21 +19,21 @@ func ContourGenerate(r Raster, wf GeometryWriter, options ContourGenerateOptions
 		if len(options.FixedLevels) > 0 {
 			levels := newFixedLevelRangeIterator(options.FixedLevels, r.Range()[1])
 			writer := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: true, lines: make(map[int]*list.List)}
-			cg := newContourGenerator(w, h, nodata, writer, levels)
+			cg := newContourGenerator(w, h, nodata, writer, levels, false)
 			cg.Process(r)
 			writer.Close()
 			appender.Flush()
 		} else if options.ExpBase > 0.0 {
 			levels := newExponentialLevelRangeIterator(options.ExpBase)
 			writer := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: true, lines: make(map[int]*list.List)}
-			cg := newContourGenerator(w, h, nodata, writer, levels)
+			cg := newContourGenerator(w, h, nodata, writer, levels, false)
 			cg.Process(r)
 			writer.Close()
 			appender.Flush()
 		} else {
 			levels := newIntervalLevelRangeIterator(options.Base, options.Interval)
 			writer := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: true, lines: make(map[int]*list.List)}
-			cg := newContourGenerator(w, h, nodata, writer, levels)
+			cg := newContourGenerator(w, h, nodata, writer, levels, false)
 			cg.Process(r)
 			writer.Close()
 			appender.Flush()
@@ -43,19 +43,19 @@ func ContourGenerate(r Raster, wf GeometryWriter, options ContourGenerateOptions
 		if len(options.FixedLevels) > 0 {
 			levels := newFixedLevelRangeIterator(options.FixedLevels, r.Range()[1])
 			writer := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: false, lines: make(map[int]*list.List)}
-			cg := newContourGenerator(w, h, nodata, writer, levels)
+			cg := newContourGenerator(w, h, nodata, writer, levels, false)
 			cg.Process(r)
 			writer.Close()
 		} else if options.ExpBase > 0.0 {
 			levels := newExponentialLevelRangeIterator(options.ExpBase)
 			writer := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: false, lines: make(map[int]*list.List)}
-			cg := newContourGenerator(w, h, nodata, writer, levels)
+			cg := newContourGenerator(w, h, nodata, writer, levels, false)
 			cg.Process(r)
 			writer.Close()
 		} else {
 			levels := newIntervalLevelRangeIterator(options.Base, options.Interval)
 			writer := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: false, lines: make(map[int]*list.List)}
-			cg := newContourGenerator(w, h, nodata, writer, levels)
+			cg := newContourGenerator(w, h, nodata, writer, levels, false)
 			cg.Process(r)
 			writer.Close()
 		}

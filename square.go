@@ -319,28 +319,28 @@ func (s *Square) segments(level float64) Segments {
 	return Segments{}
 }
 
-func (s *Square) Process(levelGenerator LevelGenerator, writer ContourWriter) {
+func (s *Square) Process(levelGenerator LevelGenerator, writer ContourWriter, tiled bool) {
 	if s.nanCount == 4 {
 		return
 	}
 
 	if s.nanCount > 0 {
 		if !math.IsNaN(s.upperLeft.Value) {
-			s.upperLeftSquare().Process(levelGenerator, writer)
+			s.upperLeftSquare().Process(levelGenerator, writer, writer.Polygonize())
 		}
 		if !math.IsNaN(s.upperRight.Value) {
-			s.upperRightSquare().Process(levelGenerator, writer)
+			s.upperRightSquare().Process(levelGenerator, writer, writer.Polygonize())
 		}
 		if !math.IsNaN(s.lowerLeft.Value) {
-			s.lowerLeftSquare().Process(levelGenerator, writer)
+			s.lowerLeftSquare().Process(levelGenerator, writer, writer.Polygonize())
 		}
 		if !math.IsNaN(s.lowerRight.Value) {
-			s.lowerRightSquare().Process(levelGenerator, writer)
+			s.lowerRightSquare().Process(levelGenerator, writer, writer.Polygonize())
 		}
 		return
 	}
 
-	if writer.Polygonize() && s.borders > 0 {
+	if writer.Polygonize() && !tiled && s.borders > 0 {
 		for _, border := range [4]uint8{UPPER_BORDER, LEFT_BORDER, RIGHT_BORDER, LOWER_BORDER} {
 			if (border & s.borders) == 0 {
 				continue
@@ -396,7 +396,7 @@ func (s *Square) Process(levelGenerator LevelGenerator, writer ContourWriter) {
 
 			writer.AddSegment(levelIdx, seg[0], seg[1])
 
-			if writer.Polygonize() {
+			if writer.Polygonize() && !tiled {
 				levelIdx, _ := next.value()
 				writer.AddSegment(levelIdx, seg[0], seg[1])
 			}

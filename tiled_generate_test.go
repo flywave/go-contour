@@ -54,7 +54,7 @@ func TestTiledContourGenerate(t *testing.T) {
 		t.FailNow()
 	}
 
-	pr := NewTiledRasterProvider(NewGeoTiffLoader("./data", "{z}_{x}_{y}.tif"), grid, bbox2, srs4326, 14)
+	pr := NewTiledRasterProvider(NewMapBoxDemLoader("./data", "{z}_{x}_{y}.webp"), grid, bbox2, srs4326, 14)
 
 	jsonwriter := NewGeoJSONGWriter("./data/tiled_line_bi.json", geo.NewProj(4326), nil)
 

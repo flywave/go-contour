@@ -87,3 +87,24 @@ func TestContourGeneratePolyFix(t *testing.T) {
 	}
 
 }
+
+func TestContourGeneratePolyFix2(t *testing.T) {
+	tiff := NewGeoTiffRaster("./data/14_13565_6404.tif")
+
+	jsonwriter := NewGeoJSONGWriter("./data/14_13565_6404.json", geo.NewProj(4326), nil)
+
+	options := ContourGenerateOptions{
+		Polygonize: true,
+		Base:       10,
+		Interval:   20,
+	}
+
+	err := ContourGenerate(tiff, jsonwriter, options)
+
+	jsonwriter.Close()
+
+	if err != nil {
+		t.FailNow()
+	}
+
+}

@@ -13,19 +13,19 @@ func TiledContourGenerate(pr RasterProvider, wf GeometryWriter, options ContourG
 			if len(options.FixedLevels) > 0 {
 				levels := newFixedLevelRangeIterator(options.FixedLevels, r.Range()[1])
 				swriter := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: true, lines: make(map[int]*list.List)}
-				cg := newContourGenerator(w, h, nodata, swriter, levels)
+				cg := newContourGenerator(w, h, nodata, swriter, levels, true)
 				cg.Process(r)
 				swriter.Close()
 			} else if options.ExpBase > 0.0 {
 				levels := newExponentialLevelRangeIterator(options.ExpBase)
 				swriter := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: true, lines: make(map[int]*list.List)}
-				cg := newContourGenerator(w, h, nodata, swriter, levels)
+				cg := newContourGenerator(w, h, nodata, swriter, levels, true)
 				cg.Process(r)
 				swriter.Close()
 			} else {
 				levels := newIntervalLevelRangeIterator(options.Base, options.Interval)
 				swriter := &SegmentMerger{lineWriter: appender, levelGenerator: levels, polygonize: true, lines: make(map[int]*list.List)}
-				cg := newContourGenerator(w, h, nodata, swriter, levels)
+				cg := newContourGenerator(w, h, nodata, swriter, levels, true)
 				cg.Process(r)
 				swriter.Close()
 			}

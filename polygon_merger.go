@@ -1,6 +1,7 @@
 package contour
 
 import (
+	"math"
 	"sort"
 	"sync"
 
@@ -11,6 +12,7 @@ import (
 type lsPoint struct {
 	KDPoint
 	id    int64
+	level float64
 	pt    [2]float64
 	front bool
 }
@@ -66,7 +68,7 @@ func newTilePolygonMergerWriter(polyWriter GeometryWriter) *TilePolygonMergerWri
 
 func (p *TilePolygonMergerWriter) StartOfTile(raster Raster) *TilePolygonRingWriter {
 	if p.distError == 0 {
-		p.distError = raster.GeoTransform()[1]
+		p.distError = raster.GeoTransform()[1] * 4
 	}
 	if p.srs == nil {
 		p.srs = raster.Srs()
@@ -99,11 +101,10 @@ func (p *TilePolygonMergerWriter) EndOfTile(raster Raster, wr *TilePolygonRingWr
 func (p *TilePolygonMergerWriter) Close() {
 	for level, ls := range p.noClosed {
 		for _, part := range ls {
-			part = append(part, part[0])
 			if p.poly3d {
-				p.polyWriter.Write(level, level, general.NewPolygon3([][][]float64{part}), p.srs)
+				p.polyWriter.Write(level, level, general.NewLineString3(part), p.srs)
 			} else {
-				p.polyWriter.Write(level, level, general.NewPolygon3([][][]float64{part}), p.srs)
+				p.polyWriter.Write(level, level, general.NewLineString3(part), p.srs)
 			}
 		}
 	}
@@ -133,15 +134,17 @@ func (p *TilePolygonMergerWriter) nextId() int64 {
 
 func (p *TilePolygonMergerWriter) findLineString(pt [2]float64, level float64) (*lsPoint, [][]float64) {
 	pp := &lsPoint{pt: pt}
-	pts := p.tree.KNN(pp, 1)
+	pts := p.tree.KNN(pp, 5)
 
 	if len(pts) > 0 {
-		qp := pts[0].(*lsPoint)
+		for i := range pts {
+			qp := pts[i].(*lsPoint)
 
-		if qp != nil {
-			dist := distance(pp, qp)
-			if ls, ok := p.noClosed[level][qp.id]; dist < p.distError && ok {
-				return qp, ls
+			if qp != nil {
+				dist := distance(pp, qp)
+				if ls, ok := p.noClosed[level][qp.id]; math.Abs(dist) < p.distError && qp.level == level && ok {
+					return qp, ls
+				}
 			}
 		}
 	}
@@ -149,8 +152,8 @@ func (p *TilePolygonMergerWriter) findLineString(pt [2]float64, level float64) (
 	return nil, nil
 }
 
-func (p *TilePolygonMergerWriter) addPoint(pt [2]float64, id int64, front bool) {
-	p.tree.Insert(&lsPoint{pt: pt, id: id, front: front})
+func (p *TilePolygonMergerWriter) addPoint(pt [2]float64, id int64, level float64, front bool) {
+	p.tree.Insert(&lsPoint{pt: pt, id: id, front: front, level: level})
 }
 
 func (p *TilePolygonMergerWriter) removePoint(pt [2]float64) bool {
@@ -167,35 +170,37 @@ func (p *TilePolygonMergerWriter) processNoClosed(raster Raster, wr *TilePolygon
 			gls := convertLineString(part, r.level, raster.GeoTransform())
 
 			if gls != nil {
-				fmerged, bmerged := false, false
+				fmerged, bmerged, closed := false, false, false
 
 				front, back := getFront(gls), getBack(gls)
 
 				var rawls [][]float64
 				rawId := int64(-1)
-				var oldRawPt [2]*[2]float64
-				var rawPt [2]*[2]float64
+				var oldFront [2]*[2]float64
+				var oldBack [2]*[2]float64
 
 				if front != nil {
 					fp, dls := p.findLineString(*front, r.level)
 
 					if fp != nil {
-						oldRawPt[0], oldRawPt[1] = getFront(dls), getBack(dls)
 						rawId = fp.id
-						rawls = dls
+
+						oldFront[0], oldFront[1] = getFront(dls), getBack(dls)
 
 						fmerged = true
 
 						if fp.isFront() {
+							var newraw [][]float64
 							for i := len(gls) - 1; i >= 0; i-- {
-								rawls = append(rawls, gls[i])
+								newraw = append(newraw, gls[i])
 							}
-							rawPt[0] = oldRawPt[0]
-							rawPt[1] = getBack(rawls)
+							newraw = append(newraw, dls...)
+							rawls = newraw
 						} else {
-							rawls = append(gls, rawls...)
-							rawPt[0] = getFront(rawls)
-							rawPt[1] = oldRawPt[1]
+							var newraw [][]float64
+							newraw = append(newraw, dls...)
+							newraw = append(newraw, gls...)
+							rawls = newraw
 						}
 					}
 				}
@@ -205,55 +210,82 @@ func (p *TilePolygonMergerWriter) processNoClosed(raster Raster, wr *TilePolygon
 
 					if bp != nil {
 						if bp.id == rawId {
-							bmerged = true
+							closed = true
 						} else {
-							oldRawPt[0], oldRawPt[1] = getFront(dls), getBack(dls)
+							oldBack[0], oldBack[1] = getFront(dls), getBack(dls)
+
 							rawId = bp.id
-							rawls = dls
 
 							if bp != nil {
 								bmerged = true
 
 								if bp.isFront() {
-									rawls = append(gls, rawls...)
-									rawPt[0] = getFront(rawls)
-									rawPt[1] = oldRawPt[1]
-								} else {
-									for i := len(gls) - 1; i >= 0; i-- {
-										rawls = append(rawls, gls[i])
+									var newraw [][]float64
+									if fmerged {
+										newraw = append(newraw, rawls...)
+										newraw = append(newraw, dls...)
+										rawls = newraw
+									} else {
+										newraw = append(newraw, gls...)
+										newraw = append(newraw, dls...)
+										rawls = newraw
 									}
-									rawPt[0] = oldRawPt[0]
-									rawPt[1] = getBack(rawls)
+								} else {
+									var newraw [][]float64
+									if fmerged {
+										newraw = append(newraw, dls...)
+										newraw = append(newraw, rawls...)
+										rawls = newraw
+									} else {
+										newraw = append(newraw, dls...)
+										for i := len(gls) - 1; i >= 0; i-- {
+											newraw = append(newraw, gls[i])
+										}
+										rawls = newraw
+									}
 								}
 							}
 						}
 					}
 				}
 
-				if fmerged && bmerged {
+				if closed {
 					delete(p.noClosed[r.level], rawId)
 
-					p.removePoint(*oldRawPt[0])
-					p.removePoint(*oldRawPt[1])
-
-					if rawls[0][0] != rawls[len(rawls)-1][0] && rawls[0][1] != rawls[len(rawls)-1][1] {
-						rawls = append(rawls, rawls[0])
+					if oldFront[0] != nil {
+						p.removePoint(*oldFront[0])
+					}
+					if oldFront[1] != nil {
+						p.removePoint(*oldFront[1])
 					}
 
 					if p.poly3d {
-						p.polyWriter.Write(r.level, r.level, general.NewPolygon3([][][]float64{rawls}), raster.Srs())
+						p.polyWriter.Write(r.level, r.level, general.NewLineString3(rawls), raster.Srs())
 					} else {
-						p.polyWriter.Write(r.level, r.level, general.NewPolygon3([][][]float64{rawls}), raster.Srs())
+						p.polyWriter.Write(r.level, r.level, general.NewLineString3(rawls), raster.Srs())
 					}
-
 				} else if fmerged || bmerged {
 					p.noClosed[r.level][rawId] = rawls
 
-					p.removePoint(*oldRawPt[0])
-					p.removePoint(*oldRawPt[1])
+					if oldFront[0] != nil {
+						p.removePoint(*oldFront[0])
+					}
+					if oldFront[1] != nil {
+						p.removePoint(*oldFront[1])
+					}
 
-					p.addPoint(*rawPt[0], rawId, true)
-					p.addPoint(*rawPt[1], rawId, false)
+					if oldBack[0] != nil {
+						p.removePoint(*oldBack[0])
+					}
+					if oldBack[1] != nil {
+						p.removePoint(*oldBack[1])
+					}
+
+					rawPt0 := getFront(rawls)
+					rawPt1 := getBack(rawls)
+
+					p.addPoint(*rawPt0, rawId, r.level, true)
+					p.addPoint(*rawPt1, rawId, r.level, false)
 				}
 
 				if !fmerged && !bmerged {
@@ -265,8 +297,8 @@ func (p *TilePolygonMergerWriter) processNoClosed(raster Raster, wr *TilePolygon
 
 					p.noClosed[r.level][id] = gls
 
-					p.addPoint(*front, id, true)
-					p.addPoint(*back, id, false)
+					p.addPoint(*front, id, r.level, true)
+					p.addPoint(*back, id, r.level, false)
 				}
 			}
 		}

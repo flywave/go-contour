@@ -37,10 +37,12 @@ type ContourGenerator struct {
 
 	writer         ContourWriter
 	levelGenerator LevelGenerator
+
+	tiled bool
 }
 
-func newContourGenerator(width, height int, noDataValue *float64, writer ContourWriter, levelGenerator LevelGenerator) *ContourGenerator {
-	ret := &ContourGenerator{width: width, height: height, hasNoData: false, noDataValue: math.NaN(), writer: writer, levelGenerator: levelGenerator, lineIdx: 0}
+func newContourGenerator(width, height int, noDataValue *float64, writer ContourWriter, levelGenerator LevelGenerator, tiled bool) *ContourGenerator {
+	ret := &ContourGenerator{width: width, height: height, hasNoData: false, noDataValue: math.NaN(), writer: writer, levelGenerator: levelGenerator, lineIdx: 0, tiled: tiled}
 	ret.previousLine = make([]float64, width)
 	if noDataValue != nil {
 		ret.hasNoData = true
@@ -64,7 +66,7 @@ func (g *ContourGenerator) feedLine_(line []float64) {
 		lowerLeft := ValuedPoint{Point: Point{float64(colIdx+1) - .5, float64(g.lineIdx) + .5}, Value: current.value(colIdx)}
 		lowerRight := ValuedPoint{Point: Point{float64(colIdx+1) + .5, float64(g.lineIdx) + .5}, Value: current.value(colIdx + 1)}
 
-		newSquare(upperLeft, upperRight, lowerLeft, lowerRight, NO_BORDER, false).Process(g.levelGenerator, g.writer)
+		newSquare(upperLeft, upperRight, lowerLeft, lowerRight, NO_BORDER, false).Process(g.levelGenerator, g.writer, g.tiled)
 	}
 
 	if line != nil {

@@ -7,5 +7,6 @@ require (
 	github.com/flywave/go-geo v0.0.0-20220210010039-d13dd86702b5
 	github.com/flywave/go-geom v0.0.0-20220210023939-86f84322e71f
 	github.com/flywave/go-geos v0.0.0-20210924031454-d16b758e2026
+	github.com/flywave/go-mapbox v0.0.0-20220214070417-b6d4cb228694
 	github.com/flywave/go3d v0.0.0-20220209071216-2c50e8b3e7ff
 )
