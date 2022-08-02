@@ -87,3 +87,40 @@ func (w *GeoJSONGWriter) Write(prelevel, clevel float64, poly geom.Geometry, srs
 
 	return nil
 }
+
+type GeoCollectionWriter struct {
+	GeoJSONGWriter
+}
+
+func NewGeoCollectionWriter(jsonfile string, srs geo.Proj, field *FiledDefined) *GeoCollectionWriter {
+	f, err := os.Create(jsonfile)
+	if err != nil {
+		return nil
+	}
+	if field == nil {
+		field = &FiledDefined{
+			ElevField:    "Elevation",
+			ElevFieldMin: "ElevationMin",
+			ElevFieldMax: "ElevationMax",
+		}
+	}
+	writer := bufio.NewWriter(f)
+	writer.WriteString(`{"type": "FeatureCollection", "features": [`)
+	return &GeoCollectionWriter{GeoJSONGWriter: GeoJSONGWriter{file: f, writer: writer, srs: srs, field: field}}
+}
+
+func (w *GeoCollectionWriter) Close() error {
+	w.file.Seek(-1, os.SEEK_CUR)
+	w.writer.WriteString("]}")
+	return w.GeoJSONGWriter.Close()
+}
+
+func (w *GeoCollectionWriter) Write(prelevel, clevel float64, poly geom.Geometry, srs geo.Proj) error {
+	err := w.GeoJSONGWriter.Write(prelevel, clevel, poly, srs)
+	if err != nil {
+		return err
+	}
+	w.lock.Lock()
+	defer w.lock.Unlock()
+	return w.writer.WriteByte(',')
+}
