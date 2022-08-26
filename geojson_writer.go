@@ -93,7 +93,7 @@ type GeoCollectionWriter struct {
 }
 
 func NewGeoCollectionWriter(jsonfile string, srs geo.Proj, field *FiledDefined) *GeoCollectionWriter {
-	f, err := os.Create(jsonfile)
+	f, err := os.OpenFile(jsonfile, os.O_CREATE|os.O_WRONLY, 0755)
 	if err != nil {
 		return nil
 	}
@@ -110,6 +110,7 @@ func NewGeoCollectionWriter(jsonfile string, srs geo.Proj, field *FiledDefined) 
 }
 
 func (w *GeoCollectionWriter) Close() error {
+	w.writer.Flush()
 	w.file.Seek(-1, os.SEEK_CUR)
 	w.writer.WriteString("]}")
 	return w.GeoJSONGWriter.Close()

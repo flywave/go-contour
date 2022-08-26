@@ -96,3 +96,7 @@ func (w *GeomLineStringContourWriter) AddLine(level float64, ls LineString, clos
 		return w.lsWriter.Write(level, level, general.NewLineString(newRing), w.srs)
 	}
 }
+
+func (w *GeomLineStringContourWriter) Close() error {
+	return w.lsWriter.Close()
+}

@@ -59,6 +59,8 @@ func ContourGenerate(r Raster, wf GeometryWriter, options ContourGenerateOptions
 			cg.Process(r)
 			writer.Close()
 		}
+		appender.Close()
+
 	}
 	return nil
 }
