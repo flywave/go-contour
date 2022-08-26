@@ -20,13 +20,25 @@ type GeoTiffRaster struct {
 func NewGeoTiffRaster(fileName string) *GeoTiffRaster {
 	r := &GeoTiffRaster{reader: cog.Read(fileName)}
 	if r.reader != nil {
-		var ok bool
-		r.rawData, ok = r.reader.Data[0].([]float64)
-		if !ok {
+		if len(r.reader.Data) == 0 {
 			return nil
 		}
 		r.rect = r.reader.Rects[0]
 		return r
+	}
+	return nil
+}
+
+func (r *GeoTiffRaster) convertFloat64() []float64 {
+	switch d := r.reader.Data[0].(type) {
+	case []float64:
+		return d
+	case []float32:
+		res := []float64{}
+		for _, e := range d {
+			res = append(res, float64(e))
+		}
+		return res
 	}
 	return nil
 }
@@ -44,7 +56,7 @@ func (r *GeoTiffRaster) Elevation(x, y int) float64 {
 		return math.NaN()
 	}
 	if r.rawData == nil {
-		r.rawData = r.reader.Data[0].([]float64)
+		r.rawData = r.convertFloat64()
 	}
 	return r.rawData[y*r.rect.Dx()+x]
 }
@@ -54,7 +66,7 @@ func (r *GeoTiffRaster) FetchLine(y int, line []float64) error {
 		return errors.New("not open")
 	}
 	if r.rawData == nil {
-		r.rawData = r.reader.Data[0].([]float64)
+		r.rawData = r.convertFloat64()
 	}
 	copy(line, r.rawData[y*r.rect.Dx():(y+1)*r.rect.Dx()])
 	return nil
