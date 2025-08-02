@@ -21,10 +21,6 @@ func (p *lsPoint) isFront() bool {
 	return p.front
 }
 
-func (p *lsPoint) isBack() bool {
-	return !p.front
-}
-
 func (p *lsPoint) Id() int64 {
 	return p.id
 }

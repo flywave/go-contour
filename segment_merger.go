@@ -3,17 +3,16 @@ package contour
 import (
 	"container/list"
 	"fmt"
-	"sync"
 )
 
 type SegmentMerger struct {
-	polygonize     bool
-	lineWriter     LineStringWriter
-	lines          map[int]*list.List
-	startMap       map[int]map[string]*list.Element // 起点映射表
-	endMap         map[int]map[string]*list.Element // 终点映射表
-	levelGenerator LevelGenerator
-	linePool       sync.Pool // 线段对象池
+	polygonize               bool
+	lineWriter               LineStringWriter
+	lines                    map[int]*list.List
+	startMap                 map[int]map[string]*list.Element
+	endMap                   map[int]map[string]*list.Element
+	levelGenerator           LevelGenerator
+	suppressUnclosedWarnings bool
 }
 
 func NewSegmentMerger(polygonize bool, lineWriter LineStringWriter, levelGenerator LevelGenerator) *SegmentMerger {
@@ -24,9 +23,6 @@ func NewSegmentMerger(polygonize bool, lineWriter LineStringWriter, levelGenerat
 		startMap:       make(map[int]map[string]*list.Element),
 		endMap:         make(map[int]map[string]*list.Element),
 		levelGenerator: levelGenerator,
-		linePool: sync.Pool{
-			New: func() interface{} { return &LineString{} },
-		},
 	}
 }
 
@@ -34,33 +30,37 @@ func (s *SegmentMerger) Polygonize() bool {
 	return s.polygonize
 }
 
+func (s *SegmentMerger) SetSuppressUnclosedWarnings(v bool) {
+	s.suppressUnclosedWarnings = v
+}
+
 func (s *SegmentMerger) getLineString() *LineString {
-	return s.linePool.Get().(*LineString)
+	return &LineString{}
 }
 
 func (s *SegmentMerger) putLineString(ls *LineString) {
-	*ls = (*ls)[:0] // 清空切片但保留内存
-	s.linePool.Put(ls)
+	// 移除了对象池优化，此处无需操作
 }
 
 func (s *SegmentMerger) Close() {
 	if s.polygonize {
 		for levelIdx, lines := range s.lines {
-			if lines.Len() > 0 {
+			if lines.Len() > 0 && !s.suppressUnclosedWarnings {
 				fmt.Printf("Level %d: %d unclosed contours remaining\n", levelIdx, lines.Len())
 			}
 		}
-	}
-
-	for levelIdx, lines := range s.lines {
-		for lines.Len() > 0 {
-			elem := lines.Front()
-			ls := *elem.Value.(*LineString)
-			s.lineWriter.AddLine(s.levelGenerator.Level(levelIdx), ls, false)
-			lines.Remove(elem)
-			s.putLineString(&ls)
+	} else {
+		// Fix: Use pointers directly in non-polygonizing close
+		for levelIdx, lines := range s.lines {
+			for lines.Len() > 0 {
+				elem := lines.Front()
+				lsPtr := elem.Value.(*LineString)
+				s.lineWriter.AddLine(s.levelGenerator.Level(levelIdx), *lsPtr, false)
+				lines.Remove(elem)
+				s.putLineString(lsPtr)
+			}
+			delete(s.lines, levelIdx)
 		}
-		delete(s.lines, levelIdx)
 	}
 }
 
@@ -74,10 +74,18 @@ func (s *SegmentMerger) AddBorderSegment(levelIdx int, start, end Point) {
 
 func (s *SegmentMerger) addSegment(levelIdx int, start, end Point, border bool) {
 	if start.Eq(&end, EPS) {
-		return // 忽略零长度线段
+		return
 	}
 
-	// 获取或创建当前层级的映射表
+	if s.startMap == nil {
+		s.startMap = make(map[int]map[string]*list.Element)
+	}
+	if s.endMap == nil {
+		s.endMap = make(map[int]map[string]*list.Element)
+	}
+	if s.lines == nil {
+		s.lines = make(map[int]*list.List)
+	}
 	if s.startMap[levelIdx] == nil {
 		s.startMap[levelIdx] = make(map[string]*list.Element)
 		s.endMap[levelIdx] = make(map[string]*list.Element)
@@ -87,38 +95,32 @@ func (s *SegmentMerger) addSegment(levelIdx int, start, end Point, border bool) 
 	endMap := s.endMap[levelIdx]
 	lines := s.lines[levelIdx]
 
-	// 尝试与现有线段合并
 	newLine := s.getLineString()
 	*newLine = append(*newLine, start, end)
 	merged := false
 
-	// 1. 尝试起点连接
 	if elem, found := endMap[start.Key()]; found {
 		merged = s.mergeLines(elem, newLine, true, levelIdx)
 	}
 
-	// 2. 尝试终点连接
 	if !merged {
 		if elem, found := startMap[end.Key()]; found {
 			merged = s.mergeLines(elem, newLine, false, levelIdx)
 		}
 	}
 
-	// 3. 尝试头头连接
 	if !merged {
 		if elem, found := startMap[start.Key()]; found {
 			merged = s.mergeHeadHead(elem, newLine, levelIdx)
 		}
 	}
 
-	// 4. 尝试尾尾连接
 	if !merged {
 		if elem, found := endMap[end.Key()]; found {
 			merged = s.mergeTailTail(elem, newLine, levelIdx)
 		}
 	}
 
-	// 无法合并，创建新线段
 	if !merged {
 		elem := lines.PushBack(newLine)
 		startMap[(*newLine)[0].Key()] = elem
@@ -128,100 +130,109 @@ func (s *SegmentMerger) addSegment(levelIdx int, start, end Point, border bool) 
 	}
 }
 
-// 合并线段（连接到已有线段的前面或后面）
 func (s *SegmentMerger) mergeLines(existingElem *list.Element, newLine *LineString, front bool, levelIdx int) bool {
 	existing := existingElem.Value.(*LineString)
+
+	// 检查并初始化必要的映射表
+	if s.startMap == nil {
+		s.startMap = make(map[int]map[string]*list.Element)
+	}
+	if s.endMap == nil {
+		s.endMap = make(map[int]map[string]*list.Element)
+	}
+	if s.startMap[levelIdx] == nil {
+		s.startMap[levelIdx] = make(map[string]*list.Element)
+	}
+	if s.endMap[levelIdx] == nil {
+		s.endMap[levelIdx] = make(map[string]*list.Element)
+	}
+
 	startMap := s.startMap[levelIdx]
 	endMap := s.endMap[levelIdx]
 
-	// 从映射中移除旧端点
 	delete(startMap, (*existing)[0].Key())
 	delete(endMap, (*existing)[len(*existing)-1].Key())
 
-	// 合并线段
 	if front {
-		// 新线段连接到已有线段前面
-		merged := s.getLineString()
-		*merged = append((*newLine)[:len(*newLine)-1], *existing...)
-		*existing = *merged
-	} else {
-		// 新线段连接到已有线段后面
 		*existing = append(*existing, (*newLine)[1:]...)
+	} else {
+		// Create new pointer instead of reusing existing
+		merged := s.getLineString()
+		*merged = append(*newLine, (*existing)[1:]...)
+		existingElem.Value = merged
+		// 移除了对象池优化，无需放回
+		existing = merged
 	}
 
-	// 检查是否形成闭环
 	if s.polygonize && existing.IsClosed() {
 		s.emitLine(levelIdx, existingElem, true)
 		return true
 	}
 
-	// 更新端点映射
 	startMap[(*existing)[0].Key()] = existingElem
 	endMap[(*existing)[len(*existing)-1].Key()] = existingElem
 	return true
 }
 
-// 头头合并（反转一个线段后连接）
+// 修复头头合并：反转新线段而不是已有线段
 func (s *SegmentMerger) mergeHeadHead(existingElem *list.Element, newLine *LineString, levelIdx int) bool {
 	existing := existingElem.Value.(*LineString)
 	startMap := s.startMap[levelIdx]
 	endMap := s.endMap[levelIdx]
 
-	// 从映射中移除旧端点
 	delete(startMap, (*existing)[0].Key())
 	delete(endMap, (*existing)[len(*existing)-1].Key())
 
-	// 反转已有线段
-	for i, j := 0, len(*existing)-1; i < j; i, j = i+1, j-1 {
-		(*existing)[i], (*existing)[j] = (*existing)[j], (*existing)[i]
+	// 反转新线段（不是反转已有线段）
+	for i, j := 0, len(*newLine)-1; i < j; i, j = i+1, j-1 {
+		(*newLine)[i], (*newLine)[j] = (*newLine)[j], (*newLine)[i]
 	}
 
-	// 头头连接（新线段在前）
+	// 合并：新线段（去掉最后一个点）+ 已有线段
 	merged := s.getLineString()
-	*merged = append(*newLine, (*existing)[1:]...)
+	*merged = append((*newLine)[:len(*newLine)-1], *existing...)
 	*existing = *merged
+	// 移除了对象池优化，无需放回
 
-	// 更新端点映射
 	startMap[(*existing)[0].Key()] = existingElem
 	endMap[(*existing)[len(*existing)-1].Key()] = existingElem
 	return true
 }
 
-// 尾尾合并（反转一个线段后连接）
 func (s *SegmentMerger) mergeTailTail(existingElem *list.Element, newLine *LineString, levelIdx int) bool {
 	existing := existingElem.Value.(*LineString)
 	startMap := s.startMap[levelIdx]
 	endMap := s.endMap[levelIdx]
 
-	// 从映射中移除旧端点
 	delete(startMap, (*existing)[0].Key())
 	delete(endMap, (*existing)[len(*existing)-1].Key())
 
-	// 反转新线段
 	for i, j := 0, len(*newLine)-1; i < j; i, j = i+1, j-1 {
 		(*newLine)[i], (*newLine)[j] = (*newLine)[j], (*newLine)[i]
 	}
 
-	// 尾尾连接（已有线段在前）
 	*existing = append(*existing, (*newLine)[1:]...)
 
-	// 更新端点映射
 	startMap[(*existing)[0].Key()] = existingElem
 	endMap[(*existing)[len(*existing)-1].Key()] = existingElem
 	return true
 }
 
 func (s *SegmentMerger) emitLine(levelIdx int, elem *list.Element, closed bool) {
-	ls := *elem.Value.(*LineString)
-	s.lineWriter.AddLine(s.levelGenerator.Level(levelIdx), ls, closed)
+	lsPtr := elem.Value.(*LineString)
+	s.lineWriter.AddLine(s.levelGenerator.Level(levelIdx), *lsPtr, closed)
 
-	// 从映射中移除
-	delete(s.startMap[levelIdx], ls[0].Key())
-	delete(s.endMap[levelIdx], ls[len(ls)-1].Key())
+	// Fix: Use original pointer for key deletion
+	if s.startMap != nil && s.startMap[levelIdx] != nil {
+		delete(s.startMap[levelIdx], (*lsPtr)[0].Key())
+	}
+	if s.endMap != nil && s.endMap[levelIdx] != nil {
+		delete(s.endMap[levelIdx], (*lsPtr)[len(*lsPtr)-1].Key())
+	}
 
-	// 从链表中移除
-	s.lines[levelIdx].Remove(elem)
-	s.putLineString(&ls)
+	if s.lines != nil && s.lines[levelIdx] != nil {
+		s.lines[levelIdx].Remove(elem)
+	}
 }
 
 func (s *SegmentMerger) StartOfLine() {}
