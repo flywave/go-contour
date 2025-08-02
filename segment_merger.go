@@ -183,19 +183,24 @@ func (s *SegmentMerger) mergeHeadHead(existingElem *list.Element, newLine *LineS
 	delete(startMap, (*existing)[0].Key())
 	delete(endMap, (*existing)[len(*existing)-1].Key())
 
-	// 反转新线段（不是反转已有线段）
+	// 反转新线段
 	for i, j := 0, len(*newLine)-1; i < j; i, j = i+1, j-1 {
 		(*newLine)[i], (*newLine)[j] = (*newLine)[j], (*newLine)[i]
 	}
 
-	// 合并：新线段（去掉最后一个点）+ 已有线段
+	// 创建新合并的线段
 	merged := s.getLineString()
 	*merged = append((*newLine)[:len(*newLine)-1], *existing...)
-	*existing = *merged
-	// 移除了对象池优化，无需放回
+	existingElem.Value = merged
 
-	startMap[(*existing)[0].Key()] = existingElem
-	endMap[(*existing)[len(*existing)-1].Key()] = existingElem
+	// 检查是否闭合
+	if s.polygonize && merged.IsClosed() {
+		s.emitLine(levelIdx, existingElem, true)
+		return true
+	}
+
+	startMap[(*merged)[0].Key()] = existingElem
+	endMap[(*merged)[len(*merged)-1].Key()] = existingElem
 	return true
 }
 
@@ -207,11 +212,19 @@ func (s *SegmentMerger) mergeTailTail(existingElem *list.Element, newLine *LineS
 	delete(startMap, (*existing)[0].Key())
 	delete(endMap, (*existing)[len(*existing)-1].Key())
 
+	// 反转新线段
 	for i, j := 0, len(*newLine)-1; i < j; i, j = i+1, j-1 {
 		(*newLine)[i], (*newLine)[j] = (*newLine)[j], (*newLine)[i]
 	}
 
+	// 直接扩展现有线段
 	*existing = append(*existing, (*newLine)[1:]...)
+
+	// 检查是否闭合
+	if s.polygonize && existing.IsClosed() {
+		s.emitLine(levelIdx, existingElem, true)
+		return true
+	}
 
 	startMap[(*existing)[0].Key()] = existingElem
 	endMap[(*existing)[len(*existing)-1].Key()] = existingElem

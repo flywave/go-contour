@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	EPS = 0.00000001
+	EPS = 1e-6
 )
 
 type Point vec2d.T
@@ -59,12 +59,12 @@ func (l LineString) IsBack(p *Point) bool {
 }
 
 func (l LineString) IsClosed() bool {
-	if len(l) > 1 {
-		lf := l.front()
-		lb := l.back()
-		return lf.Eq(lb, EPS)
+	if len(l) < 3 {
+		return false
 	}
-	return false
+	lf := l.front()
+	lb := l.back()
+	return lf.Eq(lb, EPS)
 }
 
 type ValuedPoint struct {
