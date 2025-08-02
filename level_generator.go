@@ -116,7 +116,6 @@ type ExponentialLevelRangeIterator struct {
 
 func newExponentialLevelRangeIterator(base float64) *ExponentialLevelRangeIterator {
 	return &ExponentialLevelRangeIterator{base: base, base_ln: math.Log(base)}
-
 }
 
 func (it *ExponentialLevelRangeIterator) index1(plevel float64) int {
