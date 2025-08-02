@@ -45,6 +45,9 @@ func getFront(ls [][]float64) *[2]float64 {
 }
 
 func getBack(ls [][]float64) *[2]float64 {
+	if len(ls) < 2 { // 添加长度检查
+		return nil
+	}
 	if len(ls) > 1 {
 		return &[2]float64{ls[len(ls)-1][0], ls[len(ls)-1][1]}
 	}
@@ -77,6 +80,8 @@ func (p *TilePolygonMergerWriter) StartOfTile(raster Raster) *TilePolygonRingWri
 }
 
 func (p *TilePolygonMergerWriter) EndOfTile(raster Raster, wr *TilePolygonRingWriter) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	rings := wr.Closed()
 
 	pwr := &GeomPolygonContourWriter{polyWriter: p.polyWriter, geoTransform: raster.GeoTransform(), srs: raster.Srs(), previousLevel: raster.Range()[0]}
@@ -99,6 +104,8 @@ func (p *TilePolygonMergerWriter) EndOfTile(raster Raster, wr *TilePolygonRingWr
 }
 
 func (p *TilePolygonMergerWriter) Close() {
+	p.lock.Lock() // 添加锁
+	defer p.lock.Unlock()
 	for level, ls := range p.noClosed {
 		for _, part := range ls {
 			if p.poly3d {
@@ -179,74 +186,57 @@ func (p *TilePolygonMergerWriter) processNoClosed(raster Raster, wr *TilePolygon
 				var oldFront [2]*[2]float64
 				var oldBack [2]*[2]float64
 
+				var fp, bp *lsPoint
+				var dls1, dls2 [][]float64
+
 				if front != nil {
-					fp, dls := p.findLineString(*front, r.level)
+					fp, dls1 = p.findLineString(*front, r.level)
 
 					if fp != nil {
 						rawId = fp.id
 
-						oldFront[0], oldFront[1] = getFront(dls), getBack(dls)
+						oldFront[0], oldFront[1] = getFront(dls1), getBack(dls1)
 
 						fmerged = true
-
-						if fp.isFront() {
-							var newraw [][]float64
-							for i := len(gls) - 1; i >= 0; i-- {
-								newraw = append(newraw, gls[i])
-							}
-							newraw = append(newraw, dls...)
-							rawls = newraw
-						} else {
-							var newraw [][]float64
-							newraw = append(newraw, dls...)
-							newraw = append(newraw, gls...)
-							rawls = newraw
-						}
 					}
 				}
 
 				if back != nil {
-					bp, dls := p.findLineString(*back, r.level)
+					bp, dls2 = p.findLineString(*back, r.level)
 
 					if bp != nil {
 						if bp.id == rawId {
 							closed = true
 						} else {
-							oldBack[0], oldBack[1] = getFront(dls), getBack(dls)
+							oldBack[0], oldBack[1] = getFront(dls2), getBack(dls2)
 
 							rawId = bp.id
 
-							if bp != nil {
-								bmerged = true
-
-								if bp.isFront() {
-									var newraw [][]float64
-									if fmerged {
-										newraw = append(newraw, rawls...)
-										newraw = append(newraw, dls...)
-										rawls = newraw
-									} else {
-										newraw = append(newraw, gls...)
-										newraw = append(newraw, dls...)
-										rawls = newraw
-									}
-								} else {
-									var newraw [][]float64
-									if fmerged {
-										newraw = append(newraw, dls...)
-										newraw = append(newraw, rawls...)
-										rawls = newraw
-									} else {
-										newraw = append(newraw, dls...)
-										for i := len(gls) - 1; i >= 0; i-- {
-											newraw = append(newraw, gls[i])
-										}
-										rawls = newraw
-									}
-								}
-							}
+							bmerged = true
 						}
 					}
+				}
+
+				// 重写线段连接逻辑
+				switch {
+				case fmerged && bmerged && fp.id == bp.id: // 闭合环
+					closed = true
+					// 闭合环的处理逻辑保持不变
+				case fmerged:
+					if fp.isFront() {
+						rawls = append(reverse(gls), dls1...)
+					} else {
+						rawls = append(dls1, gls...)
+					}
+				case bmerged:
+					if bp.isFront() {
+						rawls = append(gls, dls2...)
+					} else {
+						rawls = append(reverse(dls2), gls...)
+					}
+				default:
+					// 如果既没有前向合并也没有后向合并，则直接使用gls
+					rawls = gls
 				}
 
 				if closed {
@@ -259,11 +249,18 @@ func (p *TilePolygonMergerWriter) processNoClosed(raster Raster, wr *TilePolygon
 						p.removePoint(*oldFront[1])
 					}
 
-					if p.poly3d {
-						p.polyWriter.Write(r.level, r.level, general.NewLineString3(rawls), raster.Srs())
-					} else {
-						p.polyWriter.Write(r.level, r.level, general.NewLineString3(rawls), raster.Srs())
+					// 添加闭合验证
+					if len(rawls) > 0 {
+						first := rawls[0]
+						last := rawls[len(rawls)-1]
+						if math.Abs(first[0]-last[0]) > 1e-6 || math.Abs(first[1]-last[1]) > 1e-6 {
+							// 添加最后一个点使环闭合
+							rawls = append(rawls, []float64{first[0], first[1], first[2]})
+						}
 					}
+
+					polygon := general.NewPolygon([][][]float64{rawls})
+					p.polyWriter.Write(r.level, r.level, polygon, raster.Srs())
 				} else if fmerged || bmerged {
 					p.noClosed[r.level][rawId] = rawls
 
@@ -303,6 +300,14 @@ func (p *TilePolygonMergerWriter) processNoClosed(raster Raster, wr *TilePolygon
 			}
 		}
 	}
+}
+
+func reverse(ls [][]float64) [][]float64 {
+	newls := make([][]float64, len(ls))
+	for i, j := 0, len(ls)-1; i < len(ls); i, j = i+1, j-1 {
+		newls[i] = ls[j]
+	}
+	return newls
 }
 
 type TilePolygonRingWriter struct {

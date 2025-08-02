@@ -1,6 +1,7 @@
 package contour
 
 import (
+	"fmt"
 	"math"
 
 	vec2d "github.com/flywave/go3d/float64/vec2"
@@ -11,6 +12,10 @@ const (
 )
 
 type Point vec2d.T
+
+func (p Point) Key() string {
+	return fmt.Sprintf("%.6f,%.6f", p[0], p[1])
+}
 
 func (p *Point) Eq(o *Point, eps float64) bool {
 	if math.Abs(p[0]-o[0]) < eps && math.Abs(p[1]-o[1]) < eps {
@@ -35,7 +40,7 @@ func (l LineString) back() *Point {
 	return nil
 }
 
-func (l LineString) isFront(p *Point) bool {
+func (l LineString) IsFront(p *Point) bool {
 	lp := l.front()
 
 	if lp != nil && p != nil {
@@ -44,7 +49,7 @@ func (l LineString) isFront(p *Point) bool {
 	return false
 }
 
-func (l LineString) isBack(p *Point) bool {
+func (l LineString) IsBack(p *Point) bool {
 	lp := l.back()
 
 	if lp != nil && p != nil {
@@ -53,7 +58,7 @@ func (l LineString) isBack(p *Point) bool {
 	return false
 }
 
-func (l LineString) isClosed() bool {
+func (l LineString) IsClosed() bool {
 	if len(l) > 1 {
 		lf := l.front()
 		lb := l.back()

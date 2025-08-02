@@ -3,39 +3,30 @@ package contour
 import (
 	"container/list"
 	"fmt"
+	"sync"
 )
-
-type LineStringEx struct {
-	ls       LineString
-	isMerged bool
-}
 
 type SegmentMerger struct {
 	polygonize     bool
 	lineWriter     LineStringWriter
 	lines          map[int]*list.List
+	startMap       map[int]map[string]*list.Element // 起点映射表
+	endMap         map[int]map[string]*list.Element // 终点映射表
 	levelGenerator LevelGenerator
+	linePool       sync.Pool // 线段对象池
 }
 
-func newSegmentMerger(lineWriter LineStringWriter, levelGenerator LevelGenerator, polygonize_ bool) *SegmentMerger {
-	return &SegmentMerger{polygonize: polygonize_, lineWriter: lineWriter, lines: make(map[int]*list.List), levelGenerator: levelGenerator}
-}
-
-func (s *SegmentMerger) Close() {
-	if s.polygonize {
-		for _, val := range s.lines {
-			if val.Len() > 0 {
-				fmt.Print("remaining unclosed contour")
-			}
-		}
-	}
-
-	for levelIdx, val := range s.lines {
-		for val.Len() > 0 {
-			elm := val.Front()
-			s.lineWriter.AddLine(s.levelGenerator.Level(levelIdx), elm.Value.(*LineStringEx).ls, false)
-			val.Remove(elm)
-		}
+func NewSegmentMerger(polygonize bool, lineWriter LineStringWriter, levelGenerator LevelGenerator) *SegmentMerger {
+	return &SegmentMerger{
+		polygonize:     polygonize,
+		lineWriter:     lineWriter,
+		lines:          make(map[int]*list.List),
+		startMap:       make(map[int]map[string]*list.Element),
+		endMap:         make(map[int]map[string]*list.Element),
+		levelGenerator: levelGenerator,
+		linePool: sync.Pool{
+			New: func() interface{} { return &LineString{} },
+		},
 	}
 }
 
@@ -43,152 +34,195 @@ func (s *SegmentMerger) Polygonize() bool {
 	return s.polygonize
 }
 
-func (s *SegmentMerger) AddBorderSegment(levelIdx int, start, end Point) {
-	s.addSegment_(levelIdx, start, end, true)
+func (s *SegmentMerger) getLineString() *LineString {
+	return s.linePool.Get().(*LineString)
+}
+
+func (s *SegmentMerger) putLineString(ls *LineString) {
+	*ls = (*ls)[:0] // 清空切片但保留内存
+	s.linePool.Put(ls)
+}
+
+func (s *SegmentMerger) Close() {
+	if s.polygonize {
+		for levelIdx, lines := range s.lines {
+			if lines.Len() > 0 {
+				fmt.Printf("Level %d: %d unclosed contours remaining\n", levelIdx, lines.Len())
+			}
+		}
+	}
+
+	for levelIdx, lines := range s.lines {
+		for lines.Len() > 0 {
+			elem := lines.Front()
+			ls := *elem.Value.(*LineString)
+			s.lineWriter.AddLine(s.levelGenerator.Level(levelIdx), ls, false)
+			lines.Remove(elem)
+			s.putLineString(&ls)
+		}
+		delete(s.lines, levelIdx)
+	}
 }
 
 func (s *SegmentMerger) AddSegment(levelIdx int, start, end Point) {
-	s.addSegment_(levelIdx, start, end, false)
+	s.addSegment(levelIdx, start, end, false)
 }
 
-func (s *SegmentMerger) StartOfLine() {
-	if s.polygonize {
-		return
-	}
-
-	for _, l := range s.lines {
-		for i, e := l.Len(), l.Front(); i > 0; i, e = i-1, e.Next() {
-			e.Value.(*LineStringEx).isMerged = false
-		}
-	}
+func (s *SegmentMerger) AddBorderSegment(levelIdx int, start, end Point) {
+	s.addSegment(levelIdx, start, end, true)
 }
 
-func (s *SegmentMerger) EndOfLine() {
-	if s.polygonize {
-		return
+func (s *SegmentMerger) addSegment(levelIdx int, start, end Point, border bool) {
+	if start.Eq(&end, EPS) {
+		return // 忽略零长度线段
 	}
 
-	for levelIdx, l := range s.lines {
-		for e := l.Front(); e != nil; {
-			if !e.Value.(*LineStringEx).isMerged {
-				e = s.emitLine_(levelIdx, e, false)
-			} else {
-				e = e.Next()
-			}
-		}
-	}
-}
-
-func (s *SegmentMerger) emitLine_(levelIdx int, it *list.Element, closed bool) *list.Element {
-	lines := s.lines[levelIdx]
-	if lines.Len() == 0 {
-		delete(s.lines, levelIdx)
-	}
-
-	s.lineWriter.AddLine(s.levelGenerator.Level(levelIdx), it.Value.(*LineStringEx).ls, closed)
-	next := it.Next()
-	lines.Remove(it)
-	return next
-}
-
-func (s *SegmentMerger) addSegment_(levelIdx int, start, end Point, border bool) {
-	lines := s.lines[levelIdx]
-
-	if lines == nil {
+	// 获取或创建当前层级的映射表
+	if s.startMap[levelIdx] == nil {
+		s.startMap[levelIdx] = make(map[string]*list.Element)
+		s.endMap[levelIdx] = make(map[string]*list.Element)
 		s.lines[levelIdx] = list.New()
-		lines = s.lines[levelIdx]
+	}
+	startMap := s.startMap[levelIdx]
+	endMap := s.endMap[levelIdx]
+	lines := s.lines[levelIdx]
+
+	// 尝试与现有线段合并
+	newLine := s.getLineString()
+	*newLine = append(*newLine, start, end)
+	merged := false
+
+	// 1. 尝试起点连接
+	if elem, found := endMap[start.Key()]; found {
+		merged = s.mergeLines(elem, newLine, true, levelIdx)
 	}
 
-	if start == end {
-		return
-	}
-
-	it := lines.Front()
-
-	for ; it != nil; it = it.Next() {
-		lsex := it.Value.(*LineStringEx)
-
-		if lsex.ls.isBack(&end) {
-			lsex.ls = append(lsex.ls, start)
-			lsex.isMerged = true
-			break
-		}
-		if lsex.ls.isFront(&end) {
-			lsex.ls = append([]Point{start}, lsex.ls...)
-			lsex.isMerged = true
-			break
-		}
-		if lsex.ls.isBack(&start) {
-			lsex.ls = append(lsex.ls, end)
-			lsex.isMerged = true
-			break
-		}
-		if lsex.ls.isFront(&start) {
-			lsex.ls = append([]Point{end}, lsex.ls...)
-			lsex.isMerged = true
-			break
+	// 2. 尝试终点连接
+	if !merged {
+		if elem, found := startMap[end.Key()]; found {
+			merged = s.mergeLines(elem, newLine, false, levelIdx)
 		}
 	}
 
-	if it == nil {
-		lse := &LineStringEx{}
-		lines.PushBack(lse)
-
-		lse.ls = append(lse.ls, start)
-		lse.ls = append(lse.ls, end)
-		lse.isMerged = true
-	} else if s.polygonize && it != nil && (it.Value.(*LineStringEx).ls.isClosed()) {
-		s.emitLine_(levelIdx, it, true)
-		return
-	} else if it != nil {
-		other := it
-		other = other.Next()
-		for ; other != nil; other = other.Next() {
-			lsex := it.Value.(*LineStringEx)
-			olsex := other.Value.(*LineStringEx)
-
-			if lsex.ls.isBack(olsex.ls.front()) {
-				lsex.ls = lsex.ls[:len(lsex.ls)-1]
-				lsex.ls = append(lsex.ls, olsex.ls...)
-				lsex.isMerged = true
-				lines.Remove(other)
-				if lsex.ls.isClosed() {
-					s.emitLine_(levelIdx, it, true)
-				}
-				break
-			} else if olsex.ls.isBack(lsex.ls.front()) {
-				lsex.ls = lsex.ls[1:]
-				olsex.ls = append(olsex.ls, lsex.ls...)
-				olsex.isMerged = true
-				lines.Remove(it)
-				if olsex.ls.isClosed() {
-					s.emitLine_(levelIdx, other, true)
-				}
-				break
-			} else if lsex.ls.isBack(olsex.ls.back()) {
-				lsex.ls = lsex.ls[:len(lsex.ls)-1]
-
-				for i := len(olsex.ls) - 1; i >= 0; i-- {
-					lsex.ls = append(lsex.ls, olsex.ls[i])
-				}
-				lsex.isMerged = true
-				lines.Remove(other)
-				if lsex.ls.isClosed() {
-					s.emitLine_(levelIdx, it, true)
-				}
-				break
-			} else if lsex.ls.isFront(olsex.ls.front()) {
-				lsex.ls = lsex.ls[1:]
-
-				lsex.ls = append(olsex.ls, lsex.ls...)
-
-				lsex.isMerged = true
-				lines.Remove(other)
-				if lsex.ls.isClosed() {
-					s.emitLine_(levelIdx, it, true)
-				}
-				break
-			}
+	// 3. 尝试头头连接
+	if !merged {
+		if elem, found := startMap[start.Key()]; found {
+			merged = s.mergeHeadHead(elem, newLine, levelIdx)
 		}
+	}
+
+	// 4. 尝试尾尾连接
+	if !merged {
+		if elem, found := endMap[end.Key()]; found {
+			merged = s.mergeTailTail(elem, newLine, levelIdx)
+		}
+	}
+
+	// 无法合并，创建新线段
+	if !merged {
+		elem := lines.PushBack(newLine)
+		startMap[(*newLine)[0].Key()] = elem
+		endMap[(*newLine)[len(*newLine)-1].Key()] = elem
+	} else {
+		s.putLineString(newLine)
 	}
 }
+
+// 合并线段（连接到已有线段的前面或后面）
+func (s *SegmentMerger) mergeLines(existingElem *list.Element, newLine *LineString, front bool, levelIdx int) bool {
+	existing := existingElem.Value.(*LineString)
+	startMap := s.startMap[levelIdx]
+	endMap := s.endMap[levelIdx]
+
+	// 从映射中移除旧端点
+	delete(startMap, (*existing)[0].Key())
+	delete(endMap, (*existing)[len(*existing)-1].Key())
+
+	// 合并线段
+	if front {
+		// 新线段连接到已有线段前面
+		merged := s.getLineString()
+		*merged = append((*newLine)[:len(*newLine)-1], *existing...)
+		*existing = *merged
+	} else {
+		// 新线段连接到已有线段后面
+		*existing = append(*existing, (*newLine)[1:]...)
+	}
+
+	// 检查是否形成闭环
+	if s.polygonize && existing.IsClosed() {
+		s.emitLine(levelIdx, existingElem, true)
+		return true
+	}
+
+	// 更新端点映射
+	startMap[(*existing)[0].Key()] = existingElem
+	endMap[(*existing)[len(*existing)-1].Key()] = existingElem
+	return true
+}
+
+// 头头合并（反转一个线段后连接）
+func (s *SegmentMerger) mergeHeadHead(existingElem *list.Element, newLine *LineString, levelIdx int) bool {
+	existing := existingElem.Value.(*LineString)
+	startMap := s.startMap[levelIdx]
+	endMap := s.endMap[levelIdx]
+
+	// 从映射中移除旧端点
+	delete(startMap, (*existing)[0].Key())
+	delete(endMap, (*existing)[len(*existing)-1].Key())
+
+	// 反转已有线段
+	for i, j := 0, len(*existing)-1; i < j; i, j = i+1, j-1 {
+		(*existing)[i], (*existing)[j] = (*existing)[j], (*existing)[i]
+	}
+
+	// 头头连接（新线段在前）
+	merged := s.getLineString()
+	*merged = append(*newLine, (*existing)[1:]...)
+	*existing = *merged
+
+	// 更新端点映射
+	startMap[(*existing)[0].Key()] = existingElem
+	endMap[(*existing)[len(*existing)-1].Key()] = existingElem
+	return true
+}
+
+// 尾尾合并（反转一个线段后连接）
+func (s *SegmentMerger) mergeTailTail(existingElem *list.Element, newLine *LineString, levelIdx int) bool {
+	existing := existingElem.Value.(*LineString)
+	startMap := s.startMap[levelIdx]
+	endMap := s.endMap[levelIdx]
+
+	// 从映射中移除旧端点
+	delete(startMap, (*existing)[0].Key())
+	delete(endMap, (*existing)[len(*existing)-1].Key())
+
+	// 反转新线段
+	for i, j := 0, len(*newLine)-1; i < j; i, j = i+1, j-1 {
+		(*newLine)[i], (*newLine)[j] = (*newLine)[j], (*newLine)[i]
+	}
+
+	// 尾尾连接（已有线段在前）
+	*existing = append(*existing, (*newLine)[1:]...)
+
+	// 更新端点映射
+	startMap[(*existing)[0].Key()] = existingElem
+	endMap[(*existing)[len(*existing)-1].Key()] = existingElem
+	return true
+}
+
+func (s *SegmentMerger) emitLine(levelIdx int, elem *list.Element, closed bool) {
+	ls := *elem.Value.(*LineString)
+	s.lineWriter.AddLine(s.levelGenerator.Level(levelIdx), ls, closed)
+
+	// 从映射中移除
+	delete(s.startMap[levelIdx], ls[0].Key())
+	delete(s.endMap[levelIdx], ls[len(ls)-1].Key())
+
+	// 从链表中移除
+	s.lines[levelIdx].Remove(elem)
+	s.putLineString(&ls)
+}
+
+func (s *SegmentMerger) StartOfLine() {}
+func (s *SegmentMerger) EndOfLine()   {}

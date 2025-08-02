@@ -2,6 +2,7 @@ package contour
 
 import (
 	"bufio"
+	"io"
 	"os"
 	"sync"
 
@@ -111,7 +112,7 @@ func NewGeoCollectionWriter(jsonfile string, srs geo.Proj, field *FiledDefined) 
 
 func (w *GeoCollectionWriter) Close() error {
 	w.writer.Flush()
-	w.file.Seek(-1, os.SEEK_CUR)
+	w.file.Seek(-1, io.SeekCurrent)
 	w.writer.WriteString("]}")
 	return w.GeoJSONGWriter.Close()
 }
