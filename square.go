@@ -2,6 +2,7 @@ package contour
 
 import (
 	"math"
+	"sort"
 )
 
 const (
@@ -113,22 +114,31 @@ func (s *Square) marchingCase(level float64) uint8 {
 }
 
 func interpolate_(level, x1, x2, y1, y2 float64, need_split bool) float64 {
-	if need_split {
-		xm := .5 * (x1 + x2)
-		ym := .5 * (y1 + y2)
-		fy1 := fudge(level, y1)
-		fym := fudge(level, ym)
-		if (fy1 < level && level < fym) || (fy1 > level && level > fym) {
-			x2 = xm
-			y2 = ym
-		} else {
-			x1 = xm
-			y1 = ym
+	// 处理特殊情况：完全相等的值
+	if y1 == y2 {
+		if y1 == level {
+			return 0.5 * (x1 + x2)
 		}
+		return x1 // 或x2，但需要保持一致
 	}
-	fy1 := fudge(level, y1)
-	ratio := (level - fy1) / (fudge(level, y2) - fy1)
-	return x1*(1.-ratio) + x2*ratio
+
+	// 标准化处理，确保y1 < y2
+	if y1 > y2 {
+		y1, y2 = y2, y1
+		x1, x2 = x2, x1
+	}
+
+	// 确保水平值在范围内
+	if level <= y1 {
+		return x1
+	}
+	if level >= y2 {
+		return x2
+	}
+
+	// 线性插值
+	ratio := (level - y1) / (y2 - y1)
+	return x1 + ratio*(x2-x1)
 }
 
 func (s *Square) interpolate(border uint8, level float64) Point {
@@ -136,7 +146,7 @@ func (s *Square) interpolate(border uint8, level float64) Point {
 	case LEFT_BORDER:
 		return Point{
 			s.upperLeft.Point[0],
-			interpolate_(level, s.lowerLeft.Point[1], s.upperLeft.Point[1], s.lowerLeft.Value, s.upperLeft.Value, !s.split),
+			interpolate_(level, s.upperLeft.Point[1], s.lowerLeft.Point[1], s.upperLeft.Value, s.lowerLeft.Value, !s.split),
 		}
 	case LOWER_BORDER:
 		return Point{
@@ -146,7 +156,7 @@ func (s *Square) interpolate(border uint8, level float64) Point {
 	case RIGHT_BORDER:
 		return Point{
 			s.upperRight.Point[0],
-			interpolate_(level, s.lowerRight.Point[1], s.upperRight.Point[1], s.lowerRight.Value, s.upperRight.Value, !s.split),
+			interpolate_(level, s.upperRight.Point[1], s.lowerRight.Point[1], s.upperRight.Value, s.lowerRight.Value, !s.split),
 		}
 	case UPPER_BORDER:
 		return Point{
@@ -281,36 +291,35 @@ func (s *Square) segment(border uint8) ValuedSegment {
 
 func (s *Square) segments(level float64) Segments {
 	switch s.marchingCase(level) {
-	case (ALL_LOW):
+	case ALL_LOW:
 		return Segments{}
-	case (ALL_HIGH):
+	case ALL_HIGH:
 		return Segments{}
-	case (UPPER_LEFT):
-		return Segments{Segment{s.interpolate(UPPER_BORDER, level), s.interpolate(LEFT_BORDER, level)}}
-	case (LOWER_LEFT):
-		return Segments{Segment{s.interpolate(LEFT_BORDER, level), s.interpolate(LOWER_BORDER, level)}}
-	case (LOWER_RIGHT):
-		return Segments{Segment{s.interpolate(LOWER_BORDER, level), s.interpolate(RIGHT_BORDER, level)}}
-	case (UPPER_RIGHT):
-		return Segments{Segment{s.interpolate(RIGHT_BORDER, level), s.interpolate(UPPER_BORDER, level)}}
-	case (UPPER_LEFT | LOWER_LEFT):
-		return Segments{Segment{s.interpolate(UPPER_BORDER, level), s.interpolate(LOWER_BORDER, level)}}
-	case (LOWER_LEFT | LOWER_RIGHT):
-		return Segments{Segment{s.interpolate(LEFT_BORDER, level), s.interpolate(RIGHT_BORDER, level)}}
-	case (LOWER_RIGHT | UPPER_RIGHT):
-		return Segments{Segment{s.interpolate(LOWER_BORDER, level), s.interpolate(UPPER_BORDER, level)}}
-	case (UPPER_RIGHT | UPPER_LEFT):
-		return Segments{Segment{s.interpolate(RIGHT_BORDER, level), s.interpolate(LEFT_BORDER, level)}}
-	case (ALL_HIGH & ^UPPER_LEFT):
+	case UPPER_LEFT:
 		return Segments{Segment{s.interpolate(LEFT_BORDER, level), s.interpolate(UPPER_BORDER, level)}}
-	case (ALL_HIGH & ^LOWER_LEFT):
+	case LOWER_LEFT:
+		return Segments{Segment{s.interpolate(LEFT_BORDER, level), s.interpolate(LOWER_BORDER, level)}}
+	case LOWER_RIGHT:
+		return Segments{Segment{s.interpolate(LOWER_BORDER, level), s.interpolate(RIGHT_BORDER, level)}}
+	case UPPER_RIGHT:
+		return Segments{Segment{s.interpolate(RIGHT_BORDER, level), s.interpolate(UPPER_BORDER, level)}}
+	case UPPER_LEFT | LOWER_LEFT:
+		return Segments{Segment{s.interpolate(UPPER_BORDER, level), s.interpolate(LOWER_BORDER, level)}}
+	case LOWER_LEFT | LOWER_RIGHT:
+		return Segments{Segment{s.interpolate(LEFT_BORDER, level), s.interpolate(RIGHT_BORDER, level)}}
+	case LOWER_RIGHT | UPPER_RIGHT:
+		return Segments{Segment{s.interpolate(LOWER_BORDER, level), s.interpolate(UPPER_BORDER, level)}}
+	case UPPER_RIGHT | UPPER_LEFT:
+		return Segments{Segment{s.interpolate(RIGHT_BORDER, level), s.interpolate(LEFT_BORDER, level)}}
+	case ALL_HIGH & ^UPPER_LEFT:
+		return Segments{Segment{s.interpolate(LEFT_BORDER, level), s.interpolate(UPPER_BORDER, level)}}
+	case ALL_HIGH & ^LOWER_LEFT:
 		return Segments{Segment{s.interpolate(LOWER_BORDER, level), s.interpolate(LEFT_BORDER, level)}}
-	case (ALL_HIGH & ^LOWER_RIGHT):
+	case ALL_HIGH & ^LOWER_RIGHT:
 		return Segments{Segment{s.interpolate(RIGHT_BORDER, level), s.interpolate(LOWER_BORDER, level)}}
-	case (ALL_HIGH & ^UPPER_RIGHT):
+	case ALL_HIGH & ^UPPER_RIGHT:
 		return Segments{Segment{s.interpolate(UPPER_BORDER, level), s.interpolate(RIGHT_BORDER, level)}}
-	case (SADDLE_NE):
-	case (SADDLE_NW):
+	case SADDLE_NE, SADDLE_NW:
 		return Segments{
 			Segment{s.interpolate(LEFT_BORDER, level), s.interpolate(LOWER_BORDER, level)},
 			Segment{s.interpolate(RIGHT_BORDER, level), s.interpolate(UPPER_BORDER, level)},
@@ -326,56 +335,92 @@ func (s *Square) Process(levelGenerator LevelGenerator, writer ContourWriter, ti
 
 	if s.nanCount > 0 {
 		if !math.IsNaN(s.upperLeft.Value) {
-			s.upperLeftSquare().Process(levelGenerator, writer, writer.Polygonize())
+			if sq := s.upperLeftSquare(); sq != nil {
+				sq.Process(levelGenerator, writer, writer.Polygonize())
+			}
 		}
 		if !math.IsNaN(s.upperRight.Value) {
-			s.upperRightSquare().Process(levelGenerator, writer, writer.Polygonize())
+			if sq := s.upperRightSquare(); sq != nil {
+				sq.Process(levelGenerator, writer, writer.Polygonize())
+			}
 		}
 		if !math.IsNaN(s.lowerLeft.Value) {
-			s.lowerLeftSquare().Process(levelGenerator, writer, writer.Polygonize())
+			if sq := s.lowerLeftSquare(); sq != nil {
+				sq.Process(levelGenerator, writer, writer.Polygonize())
+			}
 		}
 		if !math.IsNaN(s.lowerRight.Value) {
-			s.lowerRightSquare().Process(levelGenerator, writer, writer.Polygonize())
+			if sq := s.lowerRightSquare(); sq != nil {
+				sq.Process(levelGenerator, writer, writer.Polygonize())
+			}
 		}
 		return
 	}
 
-	if writer.Polygonize() && !tiled && s.borders > 0 {
-		for _, border := range [4]uint8{UPPER_BORDER, LEFT_BORDER, RIGHT_BORDER, LOWER_BORDER} {
-			if (border & s.borders) == 0 {
-				continue
-			}
+	if writer.Polygonize() && s.borders != NO_BORDER {
+		// 分块和非分块处理使用相同的边界处理逻辑
+		// 获取级别范围
+		range_ := levelGenerator.Range(s.minValue(), s.maxValue())
+		it := range_.Begin()
+		itEnd := range_.End()
 
-			seg := s.segment(border)
-
-			lastPoint := Point{seg[0].Point[0], seg[0].Point[1]}
-			endPoint := Point{seg[1].Point[0], seg[1].Point[1]}
-
-			if seg[0].Value > seg[1].Value {
-				lastPoint, endPoint = endPoint, lastPoint
-			}
-
-			reverse := (seg[0].Value > seg[1].Value) && ((border == UPPER_BORDER) || (border == LEFT_BORDER))
-			levelIt := levelGenerator.Range(seg[0].Value, seg[1].Value)
-
-			it := levelIt.Begin()
-			for ; it.neq(levelIt.End()); it.inc() {
-				levelIdx, level := it.value()
-
-				nextPoint := s.interpolate(border, level)
-				if reverse {
-					writer.AddBorderSegment(levelIdx, nextPoint, lastPoint)
-				} else {
-					writer.AddBorderSegment(levelIdx, lastPoint, nextPoint)
+		for ; it.neq(itEnd); it.inc() {
+			for _, border := range [4]uint8{LEFT_BORDER, LOWER_BORDER, RIGHT_BORDER, UPPER_BORDER} {
+				if (border & s.borders) == 0 {
+					continue
 				}
-				lastPoint = nextPoint
+
+				seg := s.segment(border)
+				if math.IsNaN(seg[0].Value) || math.IsNaN(seg[1].Value) {
+					continue
+				}
+
+				// 创建水平值到点的映射
+				levelPoints := make(map[int][]Point)
+
+				// 获取影响该边界的所有水平值
+				minVal := math.Min(seg[0].Value, seg[1].Value)
+				maxVal := math.Max(seg[0].Value, seg[1].Value)
+				levelRange := levelGenerator.Range(minVal, maxVal)
+				lit := levelRange.Begin()
+				lend := levelRange.End()
+
+				for ; lit.neq(lend); lit.inc() {
+					levelIdx, level := lit.value()
+					if level >= minVal && level <= maxVal {
+						point := s.interpolate(border, level)
+						levelPoints[levelIdx] = append(levelPoints[levelIdx], point)
+					}
+				}
+
+				// 处理每个水平值的边界点
+				for levelIdx, points := range levelPoints {
+					// 按边界方向排序点
+					if border == LEFT_BORDER || border == RIGHT_BORDER {
+						sort.Slice(points, func(i, j int) bool {
+							return points[i][1] < points[j][1]
+						})
+					} else {
+						sort.Slice(points, func(i, j int) bool {
+							return points[i][0] < points[j][0]
+						})
+					}
+
+					// 连接相邻点形成线段，但避免添加与坐标轴平行的冗余线段
+			for i := 0; i < len(points)-1; i++ {
+				p1 := points[i]
+				p2 := points[i+1]
+				
+				// 检查线段是否与坐标轴平行且可能是冗余的
+				isHorizontal := math.Abs(p1[1]-p2[1]) < EPS
+				isVertical := math.Abs(p1[0]-p2[0]) < EPS
+				
+				// 只添加非水平和非垂直的线段，或者是必要的边界线段
+				if !(isHorizontal || isVertical) || len(points) <= 2 {
+					writer.AddBorderSegment(levelIdx, p1, p2)
+				}
 			}
-			if reverse {
-				levelIdx, _ := it.value()
-				writer.AddBorderSegment(levelIdx, endPoint, lastPoint)
-			} else {
-				levelIdx, _ := it.value()
-				writer.AddBorderSegment(levelIdx, lastPoint, endPoint)
+				}
 			}
 		}
 	}
@@ -384,23 +429,25 @@ func (s *Square) Process(levelGenerator LevelGenerator, writer ContourWriter, ti
 	it := range_.Begin()
 	itEnd := range_.End()
 	next := range_.Begin()
-	next.inc()
+	if next.neq(itEnd) {
+		next.inc()
+	}
 
 	for ; it.neq(itEnd); it.inc() {
 		levelIdx, level := it.value()
-
 		segments_ := s.segments(level)
 
 		for i := 0; i < len(segments_); i++ {
-			seg := &segments_[i]
-
+			seg := segments_[i]
 			writer.AddSegment(levelIdx, seg[0], seg[1])
 
-			if writer.Polygonize() && !tiled {
-				levelIdx, _ := next.value()
-				writer.AddSegment(levelIdx, seg[0], seg[1])
+			if writer.Polygonize() && !tiled && next.neq(itEnd) {
+				nextLevelIdx, _ := next.value()
+				writer.AddSegment(nextLevelIdx, seg[0], seg[1])
 			}
 		}
-		next.inc()
+		if next.neq(itEnd) {
+			next.inc()
+		}
 	}
 }

@@ -9,6 +9,9 @@ type Range [2]RangeIterator
 
 func (r *Range) Begin() RangeIterator { return r[0] }
 func (r *Range) End() RangeIterator   { return r[1] }
+func (r *Range) IsEmpty() bool {
+	return r[0].idx >= r[1].idx
+}
 
 type LevelGenerator interface {
 	Range(min, max float64) Range

@@ -67,6 +67,13 @@ func (l LineString) IsClosed() bool {
 	return lf.Eq(lb, EPS)
 }
 
+// 添加反转方法
+func (ls *LineString) Reverse() {
+	for i, j := 0, len(*ls)-1; i < j; i, j = i+1, j-1 {
+		(*ls)[i], (*ls)[j] = (*ls)[j], (*ls)[i]
+	}
+}
+
 type ValuedPoint struct {
 	Point Point
 	Value float64

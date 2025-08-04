@@ -16,7 +16,7 @@ type SegmentMerger struct {
 }
 
 func NewSegmentMerger(polygonize bool, lineWriter LineStringWriter, levelGenerator LevelGenerator) *SegmentMerger {
-	return &SegmentMerger{
+	merger := &SegmentMerger{
 		polygonize:     polygonize,
 		lineWriter:     lineWriter,
 		lines:          make(map[int]*list.List),
@@ -24,6 +24,7 @@ func NewSegmentMerger(polygonize bool, lineWriter LineStringWriter, levelGenerat
 		endMap:         make(map[int]map[string]*list.Element),
 		levelGenerator: levelGenerator,
 	}
+	return merger
 }
 
 func (s *SegmentMerger) Polygonize() bool {
