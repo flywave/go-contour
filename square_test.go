@@ -203,3 +203,79 @@ func testLeftBorder(t *testing.T, s *Square, levelGenerator LevelGenerator) {
 		t.Errorf("Expected at least 2 left border segments, got %d", leftBorderCount)
 	}
 }
+
+// 测试相邻tile在共享边界上的点生成（修正版）
+func TestSharedBorderPointGeneration(t *testing.T) {
+	// 创建两个相邻的tile（左右排列）
+	// 左tile：x∈[0,1], y∈[0,1]
+	leftSquare := &Square{
+		upperLeft:  ValuedPoint{Point: Point{0, 1}, Value: 0},
+		upperRight: ValuedPoint{Point: Point{1, 1}, Value: 0.5}, // 共享边界点
+		lowerLeft:  ValuedPoint{Point: Point{0, 0}, Value: 0},
+		lowerRight: ValuedPoint{Point: Point{1, 0}, Value: 0.5}, // 共享边界点
+		borders:    LEFT_BORDER | UPPER_BORDER | LOWER_BORDER,   // 右边界是内部边界，不标记
+	}
+
+	// 右tile：x∈[1,2], y∈[0,1]
+	rightSquare := &Square{
+		upperLeft:  ValuedPoint{Point: Point{1, 1}, Value: 0.5}, // 共享边界点（与左tile相同）
+		upperRight: ValuedPoint{Point: Point{2, 1}, Value: 1},
+		lowerLeft:  ValuedPoint{Point: Point{1, 0}, Value: 0.5}, // 共享边界点（与左tile相同）
+		lowerRight: ValuedPoint{Point: Point{2, 0}, Value: 1},
+		borders:    RIGHT_BORDER | UPPER_BORDER | LOWER_BORDER, // 左边界是内部边界，不标记
+	}
+
+	// 设置等值线层级（穿过共享边界）
+	levels := []float64{0.5}
+	levelGenerator := &TestLevelGenerator{levels: levels}
+
+	// 创建测试用的ContourWriter
+	leftWriter := NewTestContourWriter()
+	rightWriter := NewTestContourWriter()
+
+	// 处理两个tile
+	leftSquare.Process(levelGenerator, leftWriter, false)
+	rightSquare.Process(levelGenerator, rightWriter, false)
+
+	// ==== 验证1：检查内部线段 ====
+	// 左tile应生成1条内部线段：从(1,0)到(1,1)的垂直线
+	if len(leftWriter.segments) != 1 {
+		t.Fatalf("左tile预期1条内部线段，实际%d条", len(leftWriter.segments))
+	} else {
+		leftSeg := leftWriter.segments[0]
+		expectedLeftSeg := Segment{Point{1, 0}, Point{1, 1}}
+		if !pointsEqual(leftSeg.p1, expectedLeftSeg[0]) || !pointsEqual(leftSeg.p2, expectedLeftSeg[1]) {
+			t.Errorf("左tile线段错误：\n预期: %v->%v\n实际: %v->%v",
+				expectedLeftSeg[0], expectedLeftSeg[1], leftSeg.p1, leftSeg.p2)
+		}
+	}
+
+	// 右tile应无内部线段（所有点>=0.5）
+	if len(rightWriter.segments) != 0 {
+		t.Errorf("右tile预期0条内部线段，实际%d条", len(rightWriter.segments))
+	}
+
+	// ==== 验证2：检查边界线段 ====
+	// 左tile应只有左、上、下边界线段（无右边界）
+	validateNoBorder(t, leftWriter, "左tile", 1.0) // 检查x=1（右边界）不应有线段
+
+	// 右tile应只有右、上、下边界线段（无左边界）
+	validateNoBorder(t, rightWriter, "右tile", 1.0) // 检查x=1（左边界）不应有线段
+}
+
+// 验证指定X坐标上不存在边界线段
+func validateNoBorder(t *testing.T, writer *TestContourWriter, tileName string, forbiddenX float64) {
+	const tolerance = 1e-9
+	for _, seg := range writer.borderSegments {
+		if (math.Abs(seg.p1[0]-forbiddenX) < tolerance) && (math.Abs(seg.p2[0]-forbiddenX) < tolerance) {
+			t.Errorf("%s在禁止的x=%.1f位置生成边界线段：%v->%v",
+				tileName, forbiddenX, seg.p1, seg.p2)
+		}
+	}
+}
+
+// 辅助函数：比较点是否相等（考虑浮点误差）
+func pointsEqual(p1, p2 Point) bool {
+	const epsilon = 1e-9
+	return math.Abs(p1[0]-p2[0]) < epsilon && math.Abs(p1[1]-p2[1]) < epsilon
+}

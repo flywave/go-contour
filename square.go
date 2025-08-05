@@ -407,19 +407,9 @@ func (s *Square) Process(levelGenerator LevelGenerator, writer ContourWriter, ti
 					}
 
 					// 连接相邻点形成线段，但避免添加与坐标轴平行的冗余线段
-			for i := 0; i < len(points)-1; i++ {
-				p1 := points[i]
-				p2 := points[i+1]
-				
-				// 检查线段是否与坐标轴平行且可能是冗余的
-				isHorizontal := math.Abs(p1[1]-p2[1]) < EPS
-				isVertical := math.Abs(p1[0]-p2[0]) < EPS
-				
-				// 只添加非水平和非垂直的线段，或者是必要的边界线段
-				if !(isHorizontal || isVertical) || len(points) <= 2 {
-					writer.AddBorderSegment(levelIdx, p1, p2)
-				}
-			}
+					for i := 0; i < len(points)-1; i++ {
+						writer.AddBorderSegment(levelIdx, points[i], points[i+1])
+					}
 				}
 			}
 		}
