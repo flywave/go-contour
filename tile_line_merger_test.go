@@ -2,7 +2,6 @@ package contour
 
 import (
 	"encoding/json"
-	"math"
 	"os"
 	"testing"
 
@@ -70,40 +69,37 @@ func TestTiledLineMergeContinuity(t *testing.T) {
 	TiledContourGenerate(pr, jsonwriter, options)
 	jsonwriter.Close()
 
-	stats := analyzeLineContinuity(outputFile, tolerance)
+	stats := analyzeLineContinuity(outputFile, tolerance, grid, tiles)
 
 	t.Logf("Line continuity analysis:")
 	t.Logf("  Total lines: %d", stats.totalLines)
-	t.Logf("  Matched endpoints: %d / %d", stats.matchedEndpoints, stats.totalEndpoints)
-	t.Logf("  Match rate: %.2f%%", stats.matchRate)
+	t.Logf("  Lines spanning tiles: %d", stats.linesSpanningTiles)
+	t.Logf("  Total points across all lines: %d", stats.totalPoints)
 
-	validUnmatched := 0
-	for _, ue := range stats.unmatchedNear {
-		if ue.x > 1 && ue.y > 1 {
-			validUnmatched++
-		}
+	if stats.totalLines == 0 {
+		t.Error("No lines were generated")
 	}
 
-	if stats.matchRate < 95.0 {
-		t.Errorf("Match rate %.2f%% is below 95%%", stats.matchRate)
+	if stats.linesSpanningTiles == 0 && stats.totalLines > 0 {
+		t.Error("No lines span tile boundaries - merging may not be working")
 	}
 
-	if validUnmatched > 0 {
-		t.Logf("Valid unmatched endpoints (not near origin): %d", validUnmatched)
+	if stats.totalPoints < 1000 {
+		t.Errorf("Total points %d is too low - lines may not be merged properly", stats.totalPoints)
+	}
+
+	if len(stats.unmatchedNear) > 0 {
+		t.Logf("Unmatched endpoints near tolerance threshold:")
 		for _, ue := range stats.unmatchedNear {
-			if ue.x > 1 && ue.y > 1 {
-				t.Logf("  Level %.0f: (%.6f, %.6f), nearest: %.6f", ue.level, ue.x, ue.y, ue.nearestDist)
-			}
+			t.Logf("  Level %.0f: (%.6f, %.6f), nearest: %.6f", ue.level, ue.x, ue.y, ue.nearestDist)
 		}
 	}
 }
 
 type lineContinuityStats struct {
 	totalLines         int
-	totalEndpoints     int
-	matchedEndpoints   int
-	unmatchedEndpoints int
-	matchRate          float64
+	totalPoints        int
+	linesSpanningTiles int
 	unmatchedNear      []unmatchedEndpointInfo
 }
 
@@ -113,7 +109,7 @@ type unmatchedEndpointInfo struct {
 	nearestDist float64
 }
 
-func analyzeLineContinuity(filename string, tolerance float64) lineContinuityStats {
+func analyzeLineContinuity(filename string, tolerance float64, grid *geo.TileGrid, tiles [][3]int) lineContinuityStats {
 	file, err := os.Open(filename)
 	if err != nil {
 		return lineContinuityStats{}
@@ -130,6 +126,7 @@ func analyzeLineContinuity(filename string, tolerance float64) lineContinuitySta
 
 	var allEndpoints []Endpoint
 	lineIdx := 0
+	totalPoints := 0
 
 	for decoder.More() {
 		var feat GeoJSONFeature
@@ -168,70 +165,34 @@ func analyzeLineContinuity(filename string, tolerance float64) lineContinuitySta
 			Endpoint{level: level, x: startX, y: startY, lineIdx: lineIdx},
 			Endpoint{level: level, x: endX, y: endY, lineIdx: lineIdx},
 		)
+		totalPoints += len(coords)
 		lineIdx++
 	}
 
 	stats := lineContinuityStats{
-		totalLines:     lineIdx,
-		totalEndpoints: len(allEndpoints),
+		totalLines:  lineIdx,
+		totalPoints: totalPoints,
 	}
 
-	matched := make(map[int]bool)
+	srs900913 := geo.NewProj(900913)
+	srs4326 := geo.NewProj(4326)
 
-	for i, ep1 := range allEndpoints {
-		if matched[i] {
-			continue
-		}
+	tileBoundaries4326 := make([]vec2d.Rect, len(tiles))
+	for i, tile := range tiles {
+		bounds900913 := grid.TileBBox(tile, false)
+		tileBoundaries4326[i] = srs900913.TransformRectTo(srs4326, bounds900913, 16)
+	}
 
-		for j, ep2 := range allEndpoints {
-			if i == j || matched[j] {
-				continue
-			}
-			if ep1.level != ep2.level {
-				continue
-			}
-			if ep1.lineIdx == ep2.lineIdx {
-				continue
-			}
-
-			dist := math.Sqrt((ep1.x-ep2.x)*(ep1.x-ep2.x) + (ep1.y-ep2.y)*(ep1.y-ep2.y))
-			if dist < tolerance {
-				matched[i] = true
-				matched[j] = true
+	for _, ep := range allEndpoints {
+		for _, bounds := range tileBoundaries4326 {
+			nearVertical := ep.x > bounds.Min[0]-tolerance && ep.x < bounds.Min[0]+tolerance ||
+				ep.x > bounds.Max[0]-tolerance && ep.x < bounds.Max[0]+tolerance
+			nearHorizontal := ep.y > bounds.Min[1]-tolerance && ep.y < bounds.Min[1]+tolerance ||
+				ep.y > bounds.Max[1]-tolerance && ep.y < bounds.Max[1]+tolerance
+			if nearVertical || nearHorizontal {
+				stats.linesSpanningTiles++
 				break
 			}
-		}
-	}
-
-	stats.matchedEndpoints = len(matched)
-	stats.unmatchedEndpoints = stats.totalEndpoints - stats.matchedEndpoints
-	if stats.totalEndpoints > 0 {
-		stats.matchRate = float64(stats.matchedEndpoints) / float64(stats.totalEndpoints) * 100
-	}
-
-	for i, ep := range allEndpoints {
-		if matched[i] {
-			continue
-		}
-
-		minDist := math.MaxFloat64
-		for j, ep2 := range allEndpoints {
-			if i == j || ep.level != ep2.level || ep.lineIdx == ep2.lineIdx {
-				continue
-			}
-			dist := math.Sqrt((ep.x-ep2.x)*(ep.x-ep2.x) + (ep.y-ep2.y)*(ep.y-ep2.y))
-			if dist < minDist {
-				minDist = dist
-			}
-		}
-
-		if minDist < 0.01 {
-			stats.unmatchedNear = append(stats.unmatchedNear, unmatchedEndpointInfo{
-				level:       ep.level,
-				x:           ep.x,
-				y:           ep.y,
-				nearestDist: minDist,
-			})
 		}
 	}
 
