@@ -32,3 +32,5 @@ replace github.com/flywave/go-proj => ../go-proj
 replace github.com/flywave/go-geoid => ../go-geoid
 
 replace github.com/flywave/go-mapbox => ../go-mapbox
+
+replace github.com/flywave/go-geo => ../go-geo
