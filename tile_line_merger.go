@@ -11,15 +11,16 @@ import (
 )
 
 type TileLineMergerWriter struct {
-	lineWriter GeometryWriter
-	tree       *KDTree
-	noClosed   map[float64]map[int64][][]float64
-	distError  float64
-	id         int64
-	lock       sync.Mutex
-	srs        geo.Proj
-	line3d     bool
-	projSrs    geo.Proj
+	lineWriter   GeometryWriter
+	tree         *KDTree
+	noClosed     map[float64]map[int64][][]float64
+	distError    float64
+	distErrorDeg float64
+	id           int64
+	lock         sync.Mutex
+	srs          geo.Proj
+	line3d       bool
+	projSrs      geo.Proj
 }
 
 func newTileLineMergerWriter(lineWriter GeometryWriter) *TileLineMergerWriter {
@@ -36,6 +37,14 @@ func (p *TileLineMergerWriter) StartOfTile(raster Raster) *TileLineStringWriter 
 		gt := raster.GeoTransform()
 		pixelSizeMeters := p.estimatePixelSizeInMeters(gt, raster.Srs())
 		p.distError = pixelSizeMeters * 4
+
+		_, h := raster.Size()
+		centerY := gt[3] + gt[5]*float64(h)/2.0
+
+		mPerDegLat := 111320.0
+		mPerDegLon := 111320.0 * math.Cos(math.Abs(centerY)*math.Pi/180.0)
+		avgMPerDeg := (mPerDegLat + mPerDegLon) / 2.0
+		p.distErrorDeg = p.distError / avgMPerDeg
 	}
 	if p.srs == nil {
 		p.srs = raster.Srs()

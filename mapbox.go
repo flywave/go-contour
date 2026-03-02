@@ -91,9 +91,17 @@ func (r *MapBoxDemRaster) NoData() *float64 {
 }
 
 func (r *MapBoxDemRaster) GeoTransform() [6]float64 {
-	pixelsize := global_webmercator.Resolution(r.tileid[2])
-	box := r.Bounds()
-	return [6]float64{box.Min[0], pixelsize, 0, box.Max[1], 0, -pixelsize}
+	box := global_webmercator.TileBBox(r.tileid, false)
+
+	tileWidth := box.Max[0] - box.Min[0]
+	tileHeight := box.Max[1] - box.Min[1]
+	pixelSizeX := tileWidth / 512.0
+	pixelSizeY := tileHeight / 512.0
+
+	originX := box.Min[0] - pixelSizeX
+	originY := box.Max[1] + pixelSizeY
+
+	return [6]float64{originX, pixelSizeX, 0, originY, 0, -pixelSizeY}
 }
 
 func (r *MapBoxDemRaster) Range() [2]float64 {
