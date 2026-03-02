@@ -66,7 +66,7 @@ func (p *TileLineMergerWriter) estimatePixelSizeInMeters(gt [6]float64, srs geo.
 
 	if srs != nil && p.projSrs != nil && !srs.Eq(p.projSrs) {
 		pts := srs.TransformTo(p.projSrs, []vec2d.T{{centerX, centerY}, {centerX + gt[1], centerY + gt[5]}})
-		if pts != nil && len(pts) >= 2 {
+		if len(pts) >= 2 {
 			dx := pts[1][0] - pts[0][0]
 			dy := pts[1][1] - pts[0][1]
 			return math.Sqrt(dx*dx + dy*dy)
@@ -85,7 +85,7 @@ func (p *TileLineMergerWriter) toProjCoord(pt [2]float64) [2]float64 {
 	// 否则从 p.srs 转换到 3857
 	if p.srs != nil && p.projSrs != nil && !p.srs.Eq(p.projSrs) {
 		pts := p.srs.TransformTo(p.projSrs, []vec2d.T{{pt[0], pt[1]}})
-		if pts != nil && len(pts) > 0 {
+		if len(pts) > 0 {
 			return [2]float64{pts[0][0], pts[0][1]}
 		}
 	}
@@ -259,7 +259,7 @@ func (p *TileLineMergerWriter) processLines(raster Raster, wr *TileLineStringWri
 		for _, ls := range lineList {
 			gls := convertToGeoLineString(ls, level, gt)
 
-			if gls == nil || len(gls) < 2 {
+			if len(gls) < 2 {
 				continue
 			}
 
