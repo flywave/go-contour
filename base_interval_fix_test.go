@@ -138,5 +138,5 @@ func TestBaseIntervalNoAbnormalCoords(t *testing.T) {
 		t.Error("No normal lines were generated")
 	}
 
-	os.Remove(outputFile)
+	// os.Remove(outputFile)  // 暂时注释掉，以便检查数据
 }
