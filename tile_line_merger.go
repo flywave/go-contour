@@ -42,7 +42,7 @@ func (p *TileLineMergerWriter) StartOfTile(raster Raster) *TileLineStringWriter 
 	if p.distError == 0 {
 		gt := raster.GeoTransform()
 		pixelSizeMeters := p.estimatePixelSizeInMeters(gt, raster.Srs())
-		p.distError = pixelSizeMeters * 2
+		p.distError = pixelSizeMeters * 4
 
 		_, h := raster.Size()
 		centerY := gt[3] + gt[5]*float64(h)/2.0
@@ -252,8 +252,14 @@ func (p *TileLineMergerWriter) processLines(raster Raster, wr *TileLineStringWri
 	lines := wr.Lines()
 	gt := raster.GeoTransform()
 
-	longSegments := make(map[float64][][][]float64)
-	shortBoundarySegments := make(map[float64][][][]float64)
+	// 收集所有待合并线段，不区分长短
+	// 旧代码将长/短分段两次pass，导致短边界线段在长线段已经消费了KD-tree端点后匹配失败
+	type segEntry struct {
+		gls              [][]float64
+		level            float64
+		isBoundaryShort  bool
+	}
+	var allSegments []segEntry
 
 	for level, lineList := range lines {
 		for _, ls := range lineList {
@@ -263,7 +269,6 @@ func (p *TileLineMergerWriter) processLines(raster Raster, wr *TileLineStringWri
 				continue
 			}
 
-			// 过滤异常坐标
 			if !p.isValidLineString(gls) {
 				continue
 			}
@@ -274,7 +279,7 @@ func (p *TileLineMergerWriter) processLines(raster Raster, wr *TileLineStringWri
 			if isShort {
 				front, back := getFront(gls), getBack(gls)
 				if front != nil && back != nil && p.isNearTileBoundary(front, back, gt) {
-					shortBoundarySegments[level] = append(shortBoundarySegments[level], gls)
+					allSegments = append(allSegments, segEntry{gls: gls, level: level, isBoundaryShort: true})
 				}
 				continue
 			}
@@ -287,20 +292,13 @@ func (p *TileLineMergerWriter) processLines(raster Raster, wr *TileLineStringWri
 				}
 			}
 
-			longSegments[level] = append(longSegments[level], gls)
+			allSegments = append(allSegments, segEntry{gls: gls, level: level, isBoundaryShort: false})
 		}
 	}
 
-	for level, segments := range longSegments {
-		for _, gls := range segments {
-			p.mergeSegment(gls, level, false)
-		}
-	}
-
-	for level, segments := range shortBoundarySegments {
-		for _, gls := range segments {
-			p.mergeSegment(gls, level, true)
-		}
+	// 单次pass：所有线段在同一轮中竞争匹配，避免短边界线段因长线段提前消费端点而无法匹配
+	for _, se := range allSegments {
+		p.mergeSegment(se.gls, se.level, se.isBoundaryShort)
 	}
 }
 
