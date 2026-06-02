@@ -17,6 +17,94 @@ type GeoTiffRaster struct {
 	rect    image.Rectangle
 }
 
+// EnsureData lazily initialises and returns the raw float64 elevation data.
+func (r *GeoTiffRaster) EnsureData() []float64 {
+	if r.rawData == nil {
+		r.rawData = r.convertFloat64()
+	}
+	return r.rawData
+}
+
+// ExpandBorder returns a new GeoTiffRaster-like Raster that adds a 1-pixel
+// border around the original data.  The border pixels mirror the outermost
+// row/column of visible data.  The size becomes (W+2)×(H+2) and the
+// GeoTransform is shifted by one pixel.
+func (r *GeoTiffRaster) ExpandBorder() Raster {
+	r.EnsureData()
+	w, h := r.Size()
+	sw, sh := w+2, h+2
+
+	exp := &expandedGeoTiffRaster{
+		data: make([]float64, sw*sh),
+		w:    w,
+		h:    h,
+	}
+
+	// Copy inner (visible) area
+	for y := 0; y < h; y++ {
+		copy(exp.data[(y+1)*sw+1:], r.rawData[y*w:y*w+w])
+	}
+
+	// Replicate left/right borders
+	for y := 0; y < h; y++ {
+		exp.data[(y+1)*sw+0] = exp.data[(y+1)*sw+1]   // left  ← col 0
+		exp.data[(y+1)*sw+sw-1] = exp.data[(y+1)*sw+sw-2] // right ← col W-1
+	}
+	// Replicate top/bottom borders
+	for x := 0; x < sw; x++ {
+		exp.data[0*sw+x] = exp.data[1*sw+x]         // top    ← row 0
+		exp.data[(sh-1)*sw+x] = exp.data[(sh-2)*sw+x] // bottom ← row H-1
+	}
+
+	// Adjust GeoTransform: shift origin by one pixel
+	gt := r.GeoTransform()
+	exp.gt = [6]float64{
+		gt[0] - gt[1], // originX -= pixelSizeX
+		gt[1], gt[2],
+		gt[3] - gt[5], // originY -= pixelSizeY (gt[5] is typically negative)
+		gt[4], gt[5],
+	}
+
+	return exp
+}
+
+// expandedGeoTiffRaster is the 1-pixel-padded variant returned by ExpandBorder.
+type expandedGeoTiffRaster struct {
+	data     []float64
+	w, h     int
+	gt       [6]float64
+	innerSrs geo.Proj
+}
+
+func (e *expandedGeoTiffRaster) Size() (int, int)           { return e.w + 2, e.h + 2 }
+func (e *expandedGeoTiffRaster) Elevation(x, y int) float64 { return e.data[y*(e.w+2)+x] }
+func (e *expandedGeoTiffRaster) GeoTransform() [6]float64   { return e.gt }
+func (e *expandedGeoTiffRaster) Range() [2]float64 {
+	min, max := math.MaxFloat64, -math.MaxFloat64
+	for _, v := range e.data {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+	return [2]float64{min, max}
+}
+func (e *expandedGeoTiffRaster) FetchLine(y int, line []float64) error {
+	copy(line, e.data[y*(e.w+2):(y+1)*(e.w+2)])
+	return nil
+}
+func (e *expandedGeoTiffRaster) Srs() geo.Proj      { return e.innerSrs }
+func (e *expandedGeoTiffRaster) Bounds() vec2d.Rect { return vec2d.Rect{} }
+func (e *expandedGeoTiffRaster) NoData() *float64   { return nil }
+
+// ElevationData returns the underlying flat data slice for border patching.
+func (e *expandedGeoTiffRaster) ElevationData() []float64 { return e.data }
+
+// Stride returns the row width of the data array (w+2).
+func (e *expandedGeoTiffRaster) Stride() int { return e.w + 2 }
+
 func NewGeoTiffRaster(fileName string) *GeoTiffRaster {
 	r := &GeoTiffRaster{reader: cog.Read(fileName)}
 	if r.reader != nil {

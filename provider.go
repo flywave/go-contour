@@ -9,30 +9,48 @@ import (
 	vec2d "github.com/flywave/go3d/float64/vec2"
 )
 
-// tileBorderCache stores raw edge bytes of loaded MapBox DEM tiles.
-// When loading a new tile, its 1-pixel border (col 0, row 0) is patched using
-// the adjacent tile's visible edge (col 512, row 512). Additionally, the
-// interior column/row adjacent to the boundary (col 1, row 1) is also patched
-// from the neighbor's col 511 / row 511, ensuring the marching squares
-// interpolation uses identical pixel values across the shared tile edge.
+// tileBorderCache stores the outermost edge pixels of processed tiles so that
+// adjacent tiles can have their shared-boundary pixels patched to identical
+// values.  Two data paths exist side by side:
+//
+//   - byte-level (MapBox DEM, stored as raster.DEMData)
+//   - float64-level (GeoTIFF, stored as expandedGeoTiffRaster)
+//
+// When tile (x+1, y) is loaded its left column is overwritten with the values
+// from tile (x, y)'s right column; likewise for the horizontal neighbours.
 type tileBorderCache struct {
 	mu   sync.Mutex
-	data map[[3]int]*tileEdgeBytes
+	byBytes  map[[3]int]*tileEdgeBytes
+	byFloats map[[3]int]*tileEdgeFloats
 }
 
 type tileEdgeBytes struct {
-	rightCol  [][4]byte // col 512 (buffer → neighbor's col 0)
-	rightInner [][4]byte // col 511 (visible edge → neighbor's col 1)
-	bottomRow  [][4]byte // row 512 (buffer → neighbor's row 0)
-	bottomInner [][4]byte // row 511 (visible edge → neighbor's row 1)
-	stride     int
+	rightCol    [][4]byte // col 512 → neighbour col 0
+	rightInner  [][4]byte // col 511 → neighbour col 1
+	bottomRow   [][4]byte // row 512 → neighbour row 0
+	bottomInner [][4]byte // row 511 → neighbour row 1
+	stride      int
+}
+
+type tileEdgeFloats struct {
+	rightCol    []float64
+	rightInner  []float64
+	bottomRow   []float64
+	bottomInner []float64
+	width       int // row stride (w+2 for expanded rasters)
 }
 
 func newTileBorderCache() *tileBorderCache {
-	return &tileBorderCache{data: make(map[[3]int]*tileEdgeBytes)}
+	return &tileBorderCache{
+		byBytes:  make(map[[3]int]*tileEdgeBytes),
+		byFloats: make(map[[3]int]*tileEdgeFloats),
+	}
 }
 
-func (c *tileBorderCache) patch(coord [3]int, d *raster.DEMData) {
+// -------------------------------------------------------------------------
+// byte-level (MapBox DEM)
+// -------------------------------------------------------------------------
+func (c *tileBorderCache) patchBytes(coord [3]int, d *raster.DEMData) {
 	if d == nil {
 		return
 	}
@@ -41,26 +59,24 @@ func (c *tileBorderCache) patch(coord [3]int, d *raster.DEMData) {
 
 	s := d.Stride
 
-	// Patch from left neighbor: copy its visible right edge into this tile's left side
 	leftKey := [3]int{coord[0] - 1, coord[1], coord[2]}
-	if n, ok := c.data[leftKey]; ok && n.stride == s {
+	if n, ok := c.byBytes[leftKey]; ok && n.stride == s {
 		for y := 0; y < s; y++ {
-			d.Data[y*s+0] = n.rightCol[y]       // col 0 ← neighbor col 512
-			d.Data[y*s+1] = n.rightInner[y]      // col 1 ← neighbor col 511
+			d.Data[y*s+0] = n.rightCol[y]
+			d.Data[y*s+1] = n.rightInner[y]
 		}
 	}
 
-	// Patch from top neighbor: copy its visible bottom edge into this tile's top side
 	topKey := [3]int{coord[0], coord[1] - 1, coord[2]}
-	if n, ok := c.data[topKey]; ok && n.stride == s {
+	if n, ok := c.byBytes[topKey]; ok && n.stride == s {
 		for x := 0; x < s; x++ {
-			d.Data[0*s+x] = n.bottomRow[x]       // row 0 ← neighbor row 512
-			d.Data[1*s+x] = n.bottomInner[x]      // row 1 ← neighbor row 511
+			d.Data[0*s+x] = n.bottomRow[x]
+			d.Data[1*s+x] = n.bottomInner[x]
 		}
 	}
 }
 
-func (c *tileBorderCache) store(coord [3]int, d *raster.DEMData) {
+func (c *tileBorderCache) storeBytes(coord [3]int, d *raster.DEMData) {
 	if d == nil {
 		return
 	}
@@ -83,12 +99,79 @@ func (c *tileBorderCache) store(coord [3]int, d *raster.DEMData) {
 		bottomInner[x] = d.Data[511*s+x]
 	}
 
-	c.data[coord] = &tileEdgeBytes{
+	c.byBytes[coord] = &tileEdgeBytes{
 		rightCol:    rightCol,
 		rightInner:  rightInner,
 		bottomRow:   bottomRow,
 		bottomInner: bottomInner,
 		stride:      s,
+	}
+}
+
+// -------------------------------------------------------------------------
+// float64-level (expanded GeoTIFF)
+// -------------------------------------------------------------------------
+func (c *tileBorderCache) patchFloats(coord [3]int, data []float64, stride int) {
+	if data == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	leftKey := [3]int{coord[0] - 1, coord[1], coord[2]}
+	if n, ok := c.byFloats[leftKey]; ok && n.width == stride {
+		for y := 0; y < stride; y++ {
+			data[y*stride+0] = n.rightCol[y]
+			data[y*stride+1] = n.rightInner[y]
+		}
+	}
+
+	topKey := [3]int{coord[0], coord[1] - 1, coord[2]}
+	if n, ok := c.byFloats[topKey]; ok && n.width == stride {
+		for x := 0; x < stride; x++ {
+			data[0*stride+x] = n.bottomRow[x]
+			data[1*stride+x] = n.bottomInner[x]
+		}
+	}
+}
+
+func (c *tileBorderCache) storeFloats(coord [3]int, data []float64, stride int) {
+	if data == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// For an expanded GeoTIFF of size (w+2)×(h+2), the rightmost visible
+	// column is at index stride-2 (= w) and the rightmost visible + buffer at
+	// stride-1 (= w+1).  We cache the two rightmost columns and the two
+	// bottommost rows (visible + buffer) so the neighbour can patch its
+	// left / top side.
+	rightMost  := stride - 2 // last visible col
+	rightBuff  := stride - 1 // buffer col beyond visible
+	bottomMost := (len(data)/stride - 2) * stride // last visible row start
+	bottomBuff := (len(data)/stride - 1) * stride // buffer row start
+
+	rightCol := make([]float64, stride)
+	rightInner := make([]float64, stride)
+	for y := 0; y < stride; y++ {
+		rightCol[y] = data[y*stride+rightMost]
+		rightInner[y] = data[y*stride+rightBuff]
+	}
+
+	bottomRow := make([]float64, stride)
+	bottomInner := make([]float64, stride)
+	for x := 0; x < stride; x++ {
+		bottomRow[x] = data[bottomMost+x]
+		bottomInner[x] = data[bottomBuff+x]
+	}
+
+	c.byFloats[coord] = &tileEdgeFloats{
+		rightCol:    rightCol,
+		rightInner:  rightInner,
+		bottomRow:   bottomRow,
+		bottomInner: bottomInner,
+		width:       stride,
 	}
 }
 
@@ -164,10 +247,26 @@ func (p *TiledRasterProvider) Next() Raster {
 		index := p.inc()
 		coord = p.coords[index]
 		r := p.loader.Load(coord)
-		if mbr, ok := r.(*MapBoxDemRaster); ok && mbr != nil && mbr.data != nil {
-			p.cache.patch(coord, mbr.data)
-			p.cache.store(coord, mbr.data)
+
+		switch raster := r.(type) {
+		case *MapBoxDemRaster:
+			if raster != nil && raster.data != nil {
+				p.cache.patchBytes(coord, raster.data)
+				p.cache.storeBytes(coord, raster.data)
+			}
+
+		case *GeoTiffRaster:
+			if raster != nil {
+				exp := raster.ExpandBorder()
+				egr := exp.(*expandedGeoTiffRaster)
+				p.cache.patchFloats(coord, egr.ElevationData(), egr.Stride())
+				p.cache.storeFloats(coord, egr.ElevationData(), egr.Stride())
+				// Copy SRS from the original GeoTIFF
+				egr.innerSrs = raster.Srs()
+				return exp
+			}
 		}
+
 		return r
 	}
 	return nil
