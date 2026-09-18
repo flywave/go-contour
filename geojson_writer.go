@@ -56,7 +56,11 @@ func (w *GeoJSONGWriter) Write(prelevel, clevel float64, poly geom.Geometry, srs
 	id := w.id
 	w.id++
 
-	if w.srs != nil && srs != nil && !w.srs.Eq(srs) {
+	// 两侧投影都有效且不同才需要重投影。
+	// 源投影缺失（例如栅格文件没有 SRS）时不做变换——真实的语义由
+	// ContourGenerate/TiledContourGenerate 的前置校验负责拦截，
+	// 这里只保证不会空指针崩溃、不会把未重投影的坐标当成目标 SRS 的坐标写出。
+	if projValid(srs) && projValid(w.srs) && !projEq(w.srs, srs) {
 		poly = geo.ApplyGeometry(poly, srs, w.srs)
 	}
 

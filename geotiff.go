@@ -73,11 +73,24 @@ func (r *GeoTiffRaster) FetchLine(y int, line []float64) error {
 }
 
 func (r *GeoTiffRaster) Srs() geo.Proj {
+	if r.reader == nil {
+		return nil
+	}
 	code, err := r.reader.GetEPSGCode(0)
 	if err != nil {
 		return nil
 	}
-	return geo.NewProj(code)
+	// 没有 SRS 的 GeoTIFF 会走到这里：GetEPSGCode 返回 0 而不是错误。
+	// 必须在这里规范化成 nil——geo.NewProj(0) 返回的是持有 nil *SRSProj4 的
+	// 类型化 nil 接口，如果当成有效投影传下去，比较/重投影时会直接崩溃。
+	if code <= 0 {
+		return nil
+	}
+	proj := geo.NewProj(code)
+	if !projValid(proj) {
+		return nil
+	}
+	return proj
 }
 
 func (r *GeoTiffRaster) Bounds() vec2d.Rect {

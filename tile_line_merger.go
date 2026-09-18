@@ -54,7 +54,8 @@ func (p *TileLineMergerWriter) StartOfTile(raster Raster) *TileLineStringWriter 
 	}
 	// 强制使用 900913 (Web Mercator) 作为内部坐标系统
 	// 这样 KD-tree 和 p.noClosed 都使用相同的 SRS
-	if p.srs == nil {
+	// 注意用 projValid 而不是 == nil：geo.NewProj 可能返回类型化 nil
+	if !projValid(p.srs) {
 		p.srs = srs900913
 	}
 	return newTileLineStringWriter()
@@ -64,7 +65,7 @@ func (p *TileLineMergerWriter) estimatePixelSizeInMeters(gt [6]float64, srs geo.
 	centerX := gt[0] + gt[1]*256
 	centerY := gt[3] + gt[5]*256
 
-	if srs != nil && p.projSrs != nil && !srs.Eq(p.projSrs) {
+	if projValid(srs) && projValid(p.projSrs) && !projEq(srs, p.projSrs) {
 		pts := srs.TransformTo(p.projSrs, []vec2d.T{{centerX, centerY}, {centerX + gt[1], centerY + gt[5]}})
 		if len(pts) >= 2 {
 			dx := pts[1][0] - pts[0][0]
@@ -78,12 +79,12 @@ func (p *TileLineMergerWriter) estimatePixelSizeInMeters(gt [6]float64, srs geo.
 
 func (p *TileLineMergerWriter) toProjCoord(pt [2]float64) [2]float64 {
 	// 如果 p.srs 已经是 900913，直接返回，	// 避免不必要的转换
-	if p.srs != nil && p.srs.Eq(srs900913) {
+	if projValid(p.srs) && projEq(p.srs, srs900913) {
 		return pt
 	}
 
 	// 否则从 p.srs 转换到 3857
-	if p.srs != nil && p.projSrs != nil && !p.srs.Eq(p.projSrs) {
+	if projValid(p.srs) && projValid(p.projSrs) && !projEq(p.srs, p.projSrs) {
 		pts := p.srs.TransformTo(p.projSrs, []vec2d.T{{pt[0], pt[1]}})
 		if len(pts) > 0 {
 			return [2]float64{pts[0][0], pts[0][1]}

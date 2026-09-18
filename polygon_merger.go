@@ -69,7 +69,7 @@ func (p *TilePolygonMergerWriter) StartOfTile(raster Raster) *TilePolygonRingWri
 	if p.distError == 0 {
 		p.distError = raster.GeoTransform()[1] * 4
 	}
-	if p.srs == nil {
+	if !projValid(p.srs) {
 		p.srs = raster.Srs()
 	}
 	return newTilePolygonRingWriter()

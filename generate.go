@@ -11,6 +11,12 @@ type ContourGenerateOptions struct {
 }
 
 func ContourGenerate(r Raster, wf GeometryWriter, options ContourGenerateOptions) error {
+	// 缺少 SRS 的栅格无法重投影到目标坐标系，先失败并给出明确原因，
+	// 避免生成坐标语义错误的等高线（此前的实现在比较投影时空指针崩溃）
+	if err := validateRasterSrs(r); err != nil {
+		return err
+	}
+
 	nodata := r.NoData()
 	w, h := r.Size()
 	if options.Polygonize {
